@@ -5,9 +5,18 @@
  * Nothing in this file may assert guaranteed virality, reach multiples, growth
  * or category leadership.
  */
+function resolveSiteUrl(raw: string | undefined): string {
+  if (!raw) return "https://virally.example";
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return "https://virally.example";
+  }
+}
+
 export const site = {
   name: "Virally",
-  url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://virally.example",
+  url: resolveSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
   title: "Virally — Turn one idea into content for every channel",
   description:
     "Create, adapt, schedule and improve multi-platform content campaigns from one brief.",
