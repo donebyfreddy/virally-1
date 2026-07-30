@@ -1,0 +1,184 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/* ============================================================================
+   No `@theme inline` bridge.
+
+   Our token names are identical to Tailwind v4's theme namespace
+   (`--color-canvas`, `--font-display`, `--radius-sm`), so every alias would be
+   self-referential — `--color-canvas: var(--color-canvas)` is a circular
+   declaration, not a mapping. Components use arbitrary values that read the
+   tokens directly (`bg-[var(--color-surface-1)]`), which is unambiguous and
+   keeps `styles/tokens.css` the single source of truth.
+   ========================================================================= */
+
+/* ============================================================================
+   RESET / BASE
+
+   Everything here MUST stay inside `@layer base`. Unlayered CSS wins over
+   layered CSS regardless of specificity, so an unlayered `a { color: inherit }`
+   silently defeats every Tailwind text-colour utility on every anchor — which
+   is exactly the bug this layer exists to prevent.
+
+   Deliberate exceptions live outside the layer further down: the focus ring and
+   the reduced-motion floor, both of which *should* beat utilities.
+   ========================================================================= */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* No smooth scrolling. It degrades mobile usability and interferes with
+     assistive tech. Native scrolling only. */
+    scroll-behavior: auto;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    font-weight: var(--weight-regular);
+    line-height: var(--leading-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Backstop against horizontal overflow at 390px. */
+    overflow-x: clip;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 0;
+    font-size: inherit;
+    font-weight: var(--weight-display);
+    text-wrap: balance;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  ul,
+  ol {
+    margin: 0;
+    padding: 0;
+  }
+
+  img,
+  svg,
+  video,
+  canvas {
+    display: block;
+    max-width: 100%;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+    margin: 0;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* ============================================================================
+   TYPOGRAPHIC ROLES
+   ========================================================================= */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: var(--weight-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
+}
+
+/* Tabular figures are mandatory on the utility role. Without them every
+   animated metric jitters as digit widths change. */
+.font-utility {
+  font-family: var(--font-utility);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* `text-wrap: pretty` is applied here rather than to every `<p>`. It runs a
+   multi-pass line-breaking algorithm, and paying that on the hundred-plus
+   short utility paragraphs on this page measurably delays first paint on a
+   throttled CPU. Long-form prose is where it actually improves rag. */
+.prose-measure {
+  max-width: var(--measure-prose);
+  text-wrap: pretty;
+}
+
+/* ============================================================================
+   FOCUS SYSTEM
+   One designed treatment. `outline: none` never appears without a replacement.
+   Measured at 13.15:1 against canvas.
+   ========================================================================= */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-sm);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background-color: var(--color-action);
+  color: var(--color-text-oncolor);
+}
+
+/* ============================================================================
+   KEYFRAMES
+
+   Only entry animations live here — anything scroll-linked or interactive is
+   Framer's job. `transform` and `opacity` only, so these stay on the
+   compositor.
+
+   Applied exclusively through Tailwind's `motion-safe:` variant, so under
+   `prefers-reduced-motion: reduce` the animation is never attached and the
+   element renders in its final state. That is why no keyframe here may carry
+   information: the animation is genuinely optional.
+   ========================================================================= */
+@keyframes virally-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================================
+   REDUCED MOTION — global floor.
+   Component behaviour is handled by MotionConfig reducedMotion="user";
+   this catches CSS transitions and any third-party stragglers.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

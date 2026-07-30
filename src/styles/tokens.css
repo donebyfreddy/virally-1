@@ -1,0 +1,192 @@
+/* ============================================================================
+   VIRALLY — DESIGN TOKENS
+   Single source of truth. No component may hardcode a raw value.
+
+   Every colour contrast ratio in this file was computed with WCAG 2.1
+   relative luminance, not estimated. Ratios are stated inline.
+   ========================================================================= */
+
+:root {
+  color-scheme: dark;
+
+  /* --------------------------------------------------------------------
+     COLOUR — surfaces
+     Ramp deepened from the original brief: adjacent steps of 1.06–1.18
+     were imperceptible. Now 1.087 / 1.131 / 1.235.
+     ------------------------------------------------------------------ */
+  --color-canvas: #07090d;
+  --color-surface-1: #10151c;
+  --color-surface-2: #1a212b;
+  --color-surface-3: #28313f;
+
+  /* COLOUR — text */
+  --color-text-primary: #f4f7fb;   /* 18.54:1 on canvas */
+  --color-text-secondary: #a8b2c1; /*  9.30:1 on canvas,  8.07:1 on s2 */
+  --color-text-muted: #8d99ab;     /*  6.90:1 canvas, 5.99:1 s2, 4.54:1 s3 */
+  --color-text-oncolor: #07090d;   /* 13.15:1 on action */
+
+  /* COLOUR — borders
+     Split from the brief's single token, which measured 1.76:1 and failed
+     the 3:1 UI-component requirement. */
+  --color-border-hairline: #1f2733; /* decorative only, no contrast duty */
+  --color-border: #79849a;          /* 5.29 canvas / 4.87 s1 / 4.30 s2 / 3.48 s3 */
+  --color-border-strong: #98a4b5;   /* 7.89 / 7.25 / 6.41 / 5.19 */
+
+  /* COLOUR — the two-accent taxonomy.
+     Amber = a human must decide or commit.
+     Teal  = the machine is working.
+     Nothing else on the site is ever coloured. */
+  --color-action: #ffca5c;  /* 13.15:1 on canvas */
+  --color-action-hover: #ffd77e;
+  --color-action-press: #f0b840;
+  --color-signal: #38dfbd;  /* 11.82:1 on canvas */
+  --color-focus: #ffca5c;   /* 13.15:1 — focus ring */
+
+  /* COLOUR — semantic */
+  --color-success: #4dcc88; /*  9.78:1 */
+  --color-warning: #f2b84b; /* 11.13:1 */
+  --color-error: #ff7070;   /*  7.40:1 */
+  --color-info: #6ba8ff;    /*  8.23:1 */
+
+  /* COLOUR — translucent utilities (composited over known surfaces only) */
+  --color-action-wash: rgb(255 202 92 / 0.12);
+  --color-signal-wash: rgb(56 223 189 / 0.12);
+  --color-error-wash: rgb(255 112 112 / 0.12);
+  --color-scrim: rgb(7 9 13 / 0.72);
+
+  /* --------------------------------------------------------------------
+     SPACING — 4px foundation, 8px rhythm. These values only.
+     ------------------------------------------------------------------ */
+  --space-1: 0.25rem;   /*   4 */
+  --space-2: 0.5rem;    /*   8 */
+  --space-3: 0.75rem;   /*  12 */
+  --space-4: 1rem;      /*  16 */
+  --space-6: 1.5rem;    /*  24 */
+  --space-8: 2rem;      /*  32 */
+  --space-12: 3rem;     /*  48 */
+  --space-16: 4rem;     /*  64 */
+  --space-20: 5rem;     /*  80 */
+  --space-24: 6rem;     /*  96 */
+  --space-32: 8rem;     /* 128 */
+  --space-40: 10rem;    /* 160 */
+
+  /* --------------------------------------------------------------------
+     TYPOGRAPHY
+     ------------------------------------------------------------------ */
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-utility: var(--font-jetbrains-mono), ui-monospace, monospace;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-display: 800;
+
+  --text-display-xl: clamp(3.25rem, 8vw, 6.5rem);
+  --text-display-l: clamp(2.5rem, 5.5vw, 4.25rem);
+  --text-display-m: clamp(2rem, 3.5vw, 2.75rem);
+  --text-title: 1.5rem;
+  --text-body-l: 1.125rem;
+  --text-body: 1.0625rem;
+  --text-body-s: 0.9375rem;
+  --text-utility: 0.75rem;
+  --text-utility-xs: 0.6875rem;
+
+  --leading-display: 0.95;
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-body: 1.65;
+
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0em;
+  --tracking-utility: 0.08em;
+  --tracking-eyebrow: 0.16em;
+
+  --measure-prose: 68ch;
+  --measure-narrow: 46ch;
+
+  /* --------------------------------------------------------------------
+     RADIUS — exactly two. Rails, rules and section edges get zero.
+     ------------------------------------------------------------------ */
+  --radius-sm: 4px;
+  --radius-lg: 16px;
+  --radius-full: 999px; /* genuine tags/avatars only */
+
+  /* --------------------------------------------------------------------
+     BORDERS
+     ------------------------------------------------------------------ */
+  --border-hairline: 1px solid var(--color-border-hairline);
+  --border-control: 1px solid var(--color-border);
+  --border-active: 2px solid var(--color-action);
+  --border-width-hairline: 1px;
+  --border-width-control: 1px;
+  --border-width-active: 2px;
+
+  /* --------------------------------------------------------------------
+     FOCUS — never overridden away
+     ------------------------------------------------------------------ */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* --------------------------------------------------------------------
+     SHADOW — used sparingly; elevation is carried by surface, not glow
+     ------------------------------------------------------------------ */
+  --shadow-panel: 0 16px 48px -24px rgb(0 0 0 / 0.8);
+  --shadow-raised: 0 4px 16px -8px rgb(0 0 0 / 0.6);
+
+  /* --------------------------------------------------------------------
+     Z-INDEX
+     ------------------------------------------------------------------ */
+  --z-base: 0;
+  --z-raised: 10;
+  --z-sticky: 100;
+  --z-rail: 200;
+  --z-nav: 300;
+  --z-overlay: 400;
+  --z-skiplink: 500;
+
+  /* --------------------------------------------------------------------
+     MOTION — durations
+     ------------------------------------------------------------------ */
+  --dur-instant: 120ms;
+  --dur-base: 240ms;
+  --dur-panel: 420ms;
+  --dur-orch: 1400ms;
+
+  /* MOTION — easing. Five curves, distinct jobs. No ease-in-out anywhere. */
+  --ease-cut: cubic-bezier(0.2, 0, 0, 1);
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-linear: linear;
+
+  /* --------------------------------------------------------------------
+     LAYOUT
+     ------------------------------------------------------------------ */
+  --container-max: 90rem;      /* 1440 */
+  --container-wide: 78rem;     /* 1248 */
+  --container-text: 44rem;     /* 704  */
+  --gutter: var(--space-6);
+  --gutter-lg: var(--space-12);
+  --nav-height: 4rem;
+
+  /* ASPECT RATIOS — the format engine's canonical set */
+  --ratio-9-16: 9 / 16;
+  --ratio-4-5: 4 / 5;
+  --ratio-1-1: 1 / 1;
+  --ratio-16-9: 16 / 9;
+  --ratio-4-3: 4 / 3;
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --text-body: 1.125rem;
+    --gutter: var(--space-8);
+  }
+}
+
+@media (min-width: 90rem) {
+  :root {
+    --gutter: var(--space-16);
+  }
+}

@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+build/
+.vercel
+
+# testing
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# env
+.env
+.env*.local
+
+# media — large binaries, never committed
+*.mp4
+reels/
+
+# local dev storage adapter (src/lib/storage/local.ts) — never real media
+.data/
+
+# drizzle-kit's local migration journal state
+drizzle/meta/_journal.json.bak
+
+# os / editor
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-error.log*
+.idea/
+.vscode/
+
+# analysis
+.next/analyze/
