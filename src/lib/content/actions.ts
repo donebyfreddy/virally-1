@@ -32,6 +32,12 @@ import {
   type PlanRequest,
   type Quality,
 } from "./plan";
+import { estimateBatch, creditsForGate, type GenerationGateId } from "@/lib/creative/estimator";
+import { DEFAULT_PRODUCTION_MODE } from "@/lib/creative/modes";
+import type { ProductionMode } from "@/lib/creative/types";
+import { isMagnificConfigured } from "@/lib/creative/env";
+import { InsufficientCreditsError, reserveCredits } from "@/lib/creative/credits";
+import { tenantScope } from "@/lib/creative/scope";
 
 /**
  * Campaign creation.
@@ -49,6 +55,15 @@ import {
 const VALID_PLATFORMS = new Set<Platform>(["instagram", "tiktok", "youtube", "facebook"]);
 const VALID_RATIOS = new Set<AspectRatio>(["9:16", "4:5", "1:1", "16:9", "4:3", "3:2", "custom"]);
 const VALID_QUALITY = new Set<Quality>(["draft", "standard", "high"]);
+const VALID_PRODUCTION_MODES = new Set<ProductionMode>(["fast", "hybrid", "cinematic"]);
+const VALID_GATES = new Set<GenerationGateId>([
+  "plan",
+  "scripts",
+  "storyboards",
+  "preview",
+  "media",
+  "render",
+]);
 
 // Allow-lists for the three campaign-shape controls. Validated against the same
 // option sets the composer renders, so a hand-crafted form body cannot write an
@@ -169,6 +184,37 @@ export async function createCampaign(formData: FormData): Promise<void> {
   const estimate = estimateCost(request);
   const stage = String(formData.get("stage") ?? "plan");
 
+  // Falls back to the cheapest mode rather than rejecting. An unrecognised value
+  // is a stale client or a crafted body, and defaulting UP would charge someone
+  // for Cinematic because their browser was out of date.
+  const rawMode = String(formData.get("productionMode") ?? "");
+  const productionMode: ProductionMode = VALID_PRODUCTION_MODES.has(rawMode as ProductionMode)
+    ? (rawMode as ProductionMode)
+    : DEFAULT_PRODUCTION_MODE;
+
+  /**
+   * The estimate is recomputed here from the submitted request.
+   *
+   * `quotedCredits` from the client is used ONLY as a cross-check. Trusting it
+   * would let a crafted body reserve one credit for a thousand-video batch, and
+   * the reservation is the only thing standing between a user and an unbounded
+   * provider bill.
+   */
+  const modeEstimate = estimateBatch({
+    concepts: request.concepts,
+    hooksPerConcept: request.hooksPerConcept,
+    platforms: request.platforms,
+    ratios: request.ratios,
+    languages: request.languages,
+    accountCount: request.accountCount,
+    withVoiceover: request.withVoiceover,
+    withThumbnail: request.withThumbnail,
+    withMusic: String(formData.get("withMusic") ?? "") === "true",
+    durationSeconds: request.durationSeconds,
+    quality: request.quality,
+    mode: productionMode,
+  });
+
   // The confirmation gate, re-decided here. A client that omitted the checkbox cannot
   // start an expensive batch by simply not rendering it.
   if (stage === "render" && requiresConfirmation(estimate.counts)) {
@@ -203,6 +249,48 @@ export async function createCampaign(formData: FormData): Promise<void> {
 
   if (!campaign) {
     redirect("/app/create?error=save");
+  }
+
+  /**
+   * Reserve the credits this gate will spend.
+   *
+   * Placed after the campaign row so a shortfall has something to attribute the
+   * failure to, and so the user's brief survives — losing a typed brief to a
+   * billing error is the worse outcome.
+   *
+   * Skipped entirely when no provider is configured: the batch will run on the
+   * deterministic mock, which bills nothing, and holding real credits against
+   * free work would be taking something for nothing.
+   *
+   * Only the CHOSEN gate is reserved, not the whole pipeline. Reserving the full
+   * batch cost for a "plan only" run would withhold credits for work the user
+   * explicitly declined to start.
+   */
+  if (isMagnificConfigured()) {
+    const gate = (VALID_GATES.has(stage as GenerationGateId) ? stage : "plan") as GenerationGateId;
+    const credits = creditsForGate(modeEstimate, gate);
+
+    if (credits > 0) {
+      try {
+        await reserveCredits({
+          scope: tenantScope(context.organizationId, context.workspaceId),
+          // Keyed on the campaign, so a double-submitted form reserves once.
+          idempotencyKey: `campaign:${campaign.id}:${gate}`,
+          credits,
+          purpose: "campaign_batch",
+          campaignId: campaign.id,
+          createdBy: context.user.id,
+        });
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          // The campaign is kept as a draft. Nothing was generated and nothing
+          // was charged, so the user can lower the batch and try again without
+          // retyping the brief.
+          redirect(`/app/campaigns/${campaign.id}?error=credits`);
+        }
+        throw error;
+      }
+    }
   }
 
   await db.insert(campaignBriefs).values({

@@ -10,6 +10,22 @@ const eslintConfig = defineConfig([
     rules: {
       // The content architecture forbids `any` outright.
       "@typescript-eslint/no-explicit-any": "error",
+
+      // A leading underscore marks a parameter that is deliberately unused.
+      //
+      // Needed because an interface implementation cannot always drop the
+      // parameters it ignores: omitting them narrows the concrete class's
+      // signature below the interface, which still satisfies assignability but
+      // breaks direct calls on the class. Naming them `_input` documents the
+      // contract while saying the value is unused on purpose.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
 

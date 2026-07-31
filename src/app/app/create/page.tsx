@@ -19,6 +19,9 @@ import { campaigns, connectedAccounts } from "@/lib/db/schema.fragment";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { can } from "@/lib/permissions";
 import { isMockOnly } from "@/lib/ai/registry";
+import { isMagnificConfigured } from "@/lib/creative";
+import { readBalance } from "@/lib/creative/credits";
+import { tenantScope } from "@/lib/creative/scope";
 import { createCampaign } from "@/lib/content/actions";
 import { signInPathFor } from "@/lib/auth/routes";
 import { relativeDay } from "@/lib/format";
@@ -72,7 +75,7 @@ export default async function CreatePage({
     );
   }
 
-  const [accountRows, brandRows, recent] = await Promise.all([
+  const [accountRows, brandRows, recent, balance] = await Promise.all([
     // Real count, so the plan's publishing-job figure is honest rather than assumed.
     db
       .select({ value: count() })
@@ -105,9 +108,18 @@ export default async function CreatePage({
       .where(and(eq(campaigns.workspaceId, context.workspaceId), isNull(campaigns.deletedAt)))
       .orderBy(desc(campaigns.updatedAt))
       .limit(RECENT_LIMIT),
+
+    // Read from the ledger, not from a cached column — the balance is always
+    // `sum(credit_ledger.delta)`. See src/lib/creative/credits.ts.
+    readBalance(tenantScope(context.organizationId, context.workspaceId)),
   ]);
 
   const accountCount = accountRows[0]?.value ?? 0;
+
+  // With no generation provider configured the batch runs on the mock and
+  // reserves nothing, so the composer must not block submission on a zero
+  // balance or claim credits will be deducted.
+  const unmetered = !isMagnificConfigured();
 
   return (
     <AppPage>
@@ -144,6 +156,9 @@ export default async function CreatePage({
           onSubmit={createCampaign}
           accountCount={accountCount}
           defaultLanguage={brandRows[0]?.primaryLanguage ?? "en"}
+          creditsAvailable={balance.available}
+          creditsReserved={balance.reserved}
+          unmetered={unmetered}
         />
       </div>
 

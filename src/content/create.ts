@@ -206,6 +206,50 @@ export const briefPanelCopy = {
   recentHint: "Pick up where you left off.",
 } as const;
 
+/**
+ * Production-mode selector copy.
+ *
+ * The mode labels, descriptions and credit prices are NOT here — they come from
+ * `production_modes` (seeded from src/lib/creative/modes.ts), because the brief
+ * requires them to be editable without a deploy. Duplicating them as copy
+ * constants would create a second set of prices that silently disagrees with the
+ * one the ledger charges against.
+ */
+export const productionModeCopy = {
+  heading: "Production mode",
+  hint: "How each reel is assembled. This is the single biggest driver of cost — everything else scales the count, this scales the price per item.",
+  creditsSuffix: "per reel",
+  compositionHeading: "What it assembles",
+  batchLabel: "This batch",
+} as const;
+
+/**
+ * Credit-balance copy for the plan rail.
+ *
+ * `reservedNote` explains a number that is otherwise alarming: a user who sees
+ * credits missing from their balance needs to know they are held, not spent, and
+ * that they come back.
+ */
+export const creditCopy = {
+  heading: "Production Credits",
+  availableLabel: "Available",
+  estimateLabel: "This batch",
+  afterLabel: "After reservation",
+  reservedLabel: "Currently reserved",
+  reservedNoteTitle: "HELD, NOT SPENT",
+  reservedNote:
+    "Reserved credits are held for work already running. Whatever the batch does not use is returned automatically.",
+  shortfallHeading: "NOT ENOUGH CREDITS",
+  shortfallBody:
+    "Reduce the number of concepts, hooks or formats, choose a cheaper production mode, or run an earlier stage only.",
+  reservationNoteTitle: "HOW RESERVATION WORKS",
+  reservationNote:
+    "Credits are reserved before generation starts, so a batch cannot begin work it cannot finish. Unused credits are returned when it completes.",
+  unmeteredNoteTitle: "NOTHING WILL BE CHARGED",
+  unmeteredNote:
+    "No generation provider is configured, so this batch runs against the deterministic mock and costs nothing. The figures below are what it would cost with a provider configured.",
+} as const;
+
 export const costCopy = {
   heading: "What this will create",
   countsHeading: "Output",

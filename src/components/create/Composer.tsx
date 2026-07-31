@@ -10,6 +10,7 @@ import {
   Link2,
   Mic,
   Monitor,
+  Music,
   Paperclip,
   Radio,
   Square,
@@ -26,13 +27,10 @@ import { ChoiceChip, LabelledSelect, ToolbarButton } from "@/components/app-ui/C
 import { RailList, RailNote, RailPanel, RailRow } from "@/components/app-ui/SummaryRail";
 import { ErrorState } from "@/components/app-ui/States";
 import {
-  GENERATION_STAGES,
-  DEFAULT_STAGE,
   estimateCost,
   formatCents,
   requiresConfirmation,
   validatePlanRequest,
-  type GenerationStageId,
   type PlanRequest,
   type Quality,
 } from "@/lib/content/plan";
@@ -50,6 +48,19 @@ import {
   createCopy,
   planSummaryCopy,
 } from "@/content/create";
+import { ProductionModePanel } from "./ProductionModePanel";
+import { CreditPanel } from "./CreditPanel";
+import { PRODUCTION_MODE_DEFAULTS, DEFAULT_PRODUCTION_MODE } from "@/lib/creative/modes";
+import {
+  DEFAULT_GATE,
+  GENERATION_GATES,
+  compareToBalance,
+  creditsForGate,
+  estimateBatch,
+  type EstimateRequest,
+  type GenerationGateId,
+} from "@/lib/creative/estimator";
+import type { ProductionMode } from "@/lib/creative/types";
 
 /**
  * The campaign composer.
@@ -82,12 +93,23 @@ export function Composer({
   onSubmit,
   accountCount,
   defaultLanguage,
+  creditsAvailable,
+  creditsReserved,
+  unmetered,
 }: {
   onSubmit: (payload: FormData) => void;
   accountCount: number;
   defaultLanguage: string;
+  /** Spendable Production Credits, read from the ledger on the server. */
+  creditsAvailable: number;
+  /** Credits held for work already running. Reporting only — already deducted. */
+  creditsReserved: number;
+  /** True when no generation provider is configured, so nothing will be billed. */
+  unmetered: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<ProductionMode>(DEFAULT_PRODUCTION_MODE);
+  const [withMusic, setWithMusic] = useState(true);
   const [platforms, setPlatforms] = useState<Platform[]>(["instagram", "tiktok"]);
   const [ratios, setRatios] = useState<AspectRatio[]>(["9:16"]);
   const [languages, setLanguages] = useState<string[]>([defaultLanguage]);
@@ -97,7 +119,7 @@ export function Composer({
   const [quality, setQuality] = useState<Quality>("standard");
   const [withVoiceover, setWithVoiceover] = useState(true);
   const [withThumbnail, setWithThumbnail] = useState(false);
-  const [stage, setStage] = useState<GenerationStageId>(DEFAULT_STAGE);
+  const [stage, setStage] = useState<GenerationGateId>(DEFAULT_GATE);
   const [confirmed, setConfirmed] = useState(false);
 
   // The three campaign-shape controls. Each is persisted: length becomes the
@@ -141,11 +163,90 @@ export function Composer({
   const estimate = useMemo(() => estimateCost(request), [request]);
   const needsConfirmation = requiresConfirmation(estimate.counts);
 
+  /**
+   * The mode-aware estimate, shared by the selector and the credit rail.
+   *
+   * Computed from the same pure module the server reserves against, so the
+   * number shown here is the number that will be held. Two implementations of
+   * this arithmetic would eventually disagree, and the disagreement would be a
+   * reservation the user did not agree to.
+   */
+  const modeRequest: Omit<EstimateRequest, "mode"> = useMemo(
+    () => ({
+      concepts,
+      hooksPerConcept,
+      platforms,
+      ratios,
+      languages,
+      accountCount,
+      withVoiceover,
+      withThumbnail,
+      withMusic,
+      durationSeconds,
+      quality,
+    }),
+    [
+      concepts,
+      hooksPerConcept,
+      platforms,
+      ratios,
+      languages,
+      accountCount,
+      withVoiceover,
+      withThumbnail,
+      withMusic,
+      durationSeconds,
+      quality,
+    ],
+  );
+
+  // Every mode is priced, not just the selected one — the selector shows what
+  // switching would cost, which is the comparison the control exists to support.
+  const batchCredits = useMemo(() => {
+    const entries = PRODUCTION_MODE_DEFAULTS.map(
+      (definition) =>
+        [definition.id, estimateBatch({ ...modeRequest, mode: definition.id }).credits] as const,
+    );
+    return Object.fromEntries(entries) as Record<ProductionMode, number>;
+  }, [modeRequest]);
+
+  const modeEstimate = useMemo(
+    () => estimateBatch({ ...modeRequest, mode }),
+    [modeRequest, mode],
+  );
+
+  const comparison = useMemo(
+    () => compareToBalance(modeEstimate, creditsAvailable),
+    [modeEstimate, creditsAvailable],
+  );
+
+  // What each gate would spend under the selected mode, so the stage chooser
+  // states a cost rather than a vague "spends credits" warning.
+  const gateCredits = useMemo(() => {
+    const entries = GENERATION_GATES.map(
+      (gate) => [gate.id, creditsForGate(modeEstimate, gate.id)] as const,
+    );
+    return Object.fromEntries(entries) as Record<GenerationGateId, number>;
+  }, [modeEstimate]);
+
   // Only the render stage actually spends the full estimate, so confirmation is
   // demanded for that combination rather than for any large plan.
   const gateOnConfirmation = needsConfirmation && stage === "render";
   const promptReady = prompt.trim().length >= 10;
-  const canSubmit = promptReady && errors.length === 0 && (!gateOnConfirmation || confirmed);
+
+  /**
+   * An unaffordable batch cannot be submitted.
+   *
+   * Blocked in the UI as well as on the server: the server reservation is the
+   * real guard, but letting the button through would take the user to an error
+   * page for something the page already knew.
+   *
+   * Exempt when unmetered — with no provider configured the batch runs on the
+   * mock and reserves nothing, so a zero balance must not block it.
+   */
+  const affordable = unmetered || comparison.affordable;
+  const canSubmit =
+    promptReady && errors.length === 0 && affordable && (!gateOnConfirmation || confirmed);
 
   function toggle<T>(list: T[], value: T, setter: (next: T[]) => void, atLeastOne = true) {
     const has = list.includes(value);
@@ -193,6 +294,15 @@ export function Composer({
       <input type="hidden" name="lengthDays" value={lengthDays} />
       <input type="hidden" name="tone" value={tone} />
       <input type="hidden" name="goal" value={goal} />
+      {/* `productionMode` is NOT hidden — the selector's radios carry that name
+          and post it themselves. A hidden field of the same name would submit
+          twice and the server would read whichever came first. */}
+      <input type="hidden" name="withMusic" value={String(withMusic)} />
+      {/* Posted so the server can verify the estimate it reserves against
+          matches what the user was shown. It is a cross-check, never a source:
+          the server recomputes from the same module and refuses on mismatch
+          rather than trusting a client-supplied price. */}
+      <input type="hidden" name="quotedCredits" value={modeEstimate.credits} />
 
       <div className="flex min-w-0 flex-col gap-[var(--space-6)]">
         <BriefPanel
@@ -235,28 +345,56 @@ export function Composer({
           onVoiceoverToggle={() => setWithVoiceover((value) => !value)}
           withThumbnail={withThumbnail}
           onThumbnailToggle={() => setWithThumbnail((value) => !value)}
+          withMusic={withMusic}
+          onMusicToggle={() => setWithMusic((value) => !value)}
           languages={languages}
           onLanguagesChange={setLanguages}
+        />
+
+        {/* Placed after the shape and before the templates: the mode is chosen
+            once the campaign's size is known, because its per-reel price only
+            means something against a count. */}
+        <ProductionModePanel
+          modes={PRODUCTION_MODE_DEFAULTS}
+          selected={mode}
+          onSelect={(next) => {
+            setMode(next);
+            // Re-arm confirmation: the cost the user confirmed is no longer the
+            // cost they would be charged.
+            setConfirmed(false);
+          }}
+          batchCredits={batchCredits}
+          unmetered={unmetered}
         />
 
         <TemplatePanel activeId={templateId} onApply={applyTemplate} />
       </div>
 
-      <PlanRail
-        estimate={estimate}
-        errors={errors.map((error) => error.message)}
-        stage={stage}
-        onStageChange={(next) => {
-          setStage(next);
-          // Re-arm confirmation when the expensive option is chosen.
-          setConfirmed(false);
-        }}
-        gateOnConfirmation={gateOnConfirmation}
-        confirmed={confirmed}
-        onConfirmedChange={setConfirmed}
-        canSubmit={canSubmit}
-        promptReady={promptReady}
-      />
+      <div className="flex min-w-0 flex-col gap-[var(--space-4)] xl:sticky xl:top-[var(--space-6)]">
+        <CreditPanel
+          comparison={comparison}
+          reserved={creditsReserved}
+          unmetered={unmetered}
+        />
+
+        <PlanRail
+          estimate={estimate}
+          errors={errors.map((error) => error.message)}
+          stage={stage}
+          onStageChange={(next) => {
+            setStage(next);
+            // Re-arm confirmation when the expensive option is chosen.
+            setConfirmed(false);
+          }}
+          gateOnConfirmation={gateOnConfirmation}
+          confirmed={confirmed}
+          onConfirmedChange={setConfirmed}
+          canSubmit={canSubmit}
+          promptReady={promptReady}
+          gateCredits={gateCredits}
+          unmetered={unmetered}
+        />
+      </div>
     </form>
   );
 }
@@ -389,6 +527,8 @@ function ShapePanel({
   onVoiceoverToggle,
   withThumbnail,
   onThumbnailToggle,
+  withMusic,
+  onMusicToggle,
   languages,
   onLanguagesChange,
 }: {
@@ -414,6 +554,8 @@ function ShapePanel({
   onVoiceoverToggle: () => void;
   withThumbnail: boolean;
   onThumbnailToggle: () => void;
+  withMusic: boolean;
+  onMusicToggle: () => void;
   languages: readonly string[];
   onLanguagesChange: (next: string[]) => void;
 }) {
@@ -577,6 +719,12 @@ function ShapePanel({
               selected={withThumbnail}
               onToggle={onThumbnailToggle}
             />
+            <ChoiceChip
+              label="Music"
+              icon={<Music size={16} strokeWidth={1.5} />}
+              selected={withMusic}
+              onToggle={onMusicToggle}
+            />
           </div>
         </fieldset>
       </div>
@@ -674,21 +822,29 @@ function PlanRail({
   onConfirmedChange,
   canSubmit,
   promptReady,
+  gateCredits,
+  unmetered,
 }: {
   estimate: ReturnType<typeof estimateCost>;
   errors: readonly string[];
-  stage: GenerationStageId;
-  onStageChange: (next: GenerationStageId) => void;
+  stage: GenerationGateId;
+  onStageChange: (next: GenerationGateId) => void;
   gateOnConfirmation: boolean;
   confirmed: boolean;
   onConfirmedChange: (next: boolean) => void;
   canSubmit: boolean;
   promptReady: boolean;
+  /** Credits each gate spends under the selected production mode. */
+  gateCredits: Readonly<Record<GenerationGateId, number>>;
+  unmetered: boolean;
 }) {
   const { counts } = estimate;
 
   return (
-    <aside className="flex min-w-0 flex-col gap-[var(--space-4)] xl:sticky xl:top-[var(--space-6)]">
+    // Not sticky itself: the rail column wrapper in Composer owns the sticky
+    // positioning now that the credit panel shares the column with this one.
+    // Nesting a second sticky inside it would pin the two independently.
+    <aside className="flex min-w-0 flex-col gap-[var(--space-4)]">
       <RailPanel title={planSummaryCopy.heading} accent id="plan-summary">
         <p className="text-[length:var(--text-app-meta)] leading-[var(--leading-snug)] text-[color:var(--color-text-secondary)]">
           {planSummaryCopy.intro}
@@ -806,7 +962,7 @@ function PlanRail({
         </p>
 
         <div className="mt-[var(--space-4)] flex flex-col gap-[var(--space-2)]">
-          {GENERATION_STAGES.map((option) => (
+          {GENERATION_GATES.map((option) => (
             <label
               key={option.id}
               className={cn(
@@ -834,9 +990,13 @@ function PlanRail({
               <span className="flex min-w-0 flex-col">
                 <span className="text-[length:var(--text-app-cell)] text-[color:var(--color-text-primary)]">
                   {option.label}
-                  {!option.cheap && (
+                  {/* The gate's actual credit cost, not a binary "spends
+                      credits" badge. The whole point of staging is choosing how
+                      far to go, and that choice needs the number. Suppressed
+                      when unmetered, where every gate is free. */}
+                  {!unmetered && (gateCredits[option.id] ?? 0) > 0 && (
                     <Badge tone="warning" className="ml-[var(--space-2)]">
-                      Spends credits
+                      {`${gateCredits[option.id]?.toLocaleString("en-US")} credits`}
                     </Badge>
                   )}
                 </span>

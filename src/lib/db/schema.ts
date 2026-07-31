@@ -436,3 +436,13 @@ export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
 // publishing, analytics, jobs/audit) are re-exported from schema.fragment.ts
 // once merged in — see that file for the full list.
 export * from "./schema.fragment";
+
+// Creative generation: provider catalogue, per-task provider runs and their
+// outputs, production modes, cost configuration. See schema.creative.ts for why
+// `provider_runs` is separate from `generation_runs`.
+export * from "./schema.creative";
+
+// Billing: plans, entitlements, credit reservations, top-up packages. The
+// balance is always `sum(credit_ledger.delta)` — see schema.billing.ts for why
+// no table here caches one.
+export * from "./schema.billing";

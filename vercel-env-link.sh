@@ -69,7 +69,7 @@ with open(file) as f:
         k, v = k.strip(), clean(v.strip())
 
         if key_re.match(k):
-            print(f"{k}|||{v}")
+            sys.stdout.write(f"{k}\x1f{v}\n")
 PY
 
 # ----------------------------------------------------------
@@ -78,7 +78,7 @@ PY
 
 COUNT=0
 
-while IFS="|||" read -r KEY VALUE; do
+while IFS=$'\x1f' read -r KEY VALUE; do
   [ -z "$KEY" ] && continue
 
   COUNT=$((COUNT+1))

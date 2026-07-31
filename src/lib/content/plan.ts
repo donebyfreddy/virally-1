@@ -311,19 +311,12 @@ export function formatCents(cents: number): string {
 }
 
 /**
- * The staged execution order.
+ * The staged execution order lives in `src/lib/creative/estimator.ts` as
+ * `GENERATION_GATES`, not here.
  *
- * `Generate plans first` is the safe default the brief mandates, so the stages are
- * returned as discrete gates rather than one run — each is independently retryable
- * and a user can stop after any of them.
+ * It moved because a gate now has to know what fraction of the estimate it
+ * spends, which is what the credit reservation is sized from. Two lists — one
+ * naming the stages and one pricing them — drifted the moment they disagreed on
+ * an id ("script" against "scripts"), and the consequence was a batch reserving
+ * plan-level credits for a full render.
  */
-export const GENERATION_STAGES = [
-  { id: "plan", label: "Generate plans only", produces: "Concepts and hooks", cheap: true },
-  { id: "script", label: "Generate scripts", produces: "A script per content item", cheap: true },
-  { id: "storyboard", label: "Generate storyboards", produces: "Shot lists and prompts", cheap: true },
-  { id: "render", label: "Render complete batch", produces: "Every video and thumbnail", cheap: false },
-] as const;
-
-export type GenerationStageId = (typeof GENERATION_STAGES)[number]["id"];
-
-export const DEFAULT_STAGE: GenerationStageId = "plan";

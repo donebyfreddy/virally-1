@@ -2400,8 +2400,23 @@ export const creditLedger = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     delta: integer('delta').notNull(),
+    // The two `reservation_*` reasons were added for the generation reservation
+    // flow (see src/lib/creative/credits.ts). The original six names are kept
+    // verbatim rather than renamed to the brief's vocabulary — `plan_grant`
+    // rather than `subscription_grant`, `expiry` rather than `expiration` —
+    // because they are already written into a migrated CHECK constraint and any
+    // rows behind it. Renaming buys nothing and costs a data migration.
     reason: text('reason').notNull().$type<
-      'plan_grant' | 'top_up' | 'consumption' | 'refund' | 'adjustment' | 'expiry'
+      | 'plan_grant'
+      | 'top_up'
+      | 'consumption'
+      | 'refund'
+      | 'adjustment'
+      | 'expiry'
+      // Credits withheld before a generation runs. Negative delta.
+      | 'reservation_hold'
+      // Unused portion of a hold returned once actual cost is known. Positive.
+      | 'reservation_release'
     >(),
     usageEventId: bigint('usage_event_id', { mode: 'bigint' }).references(() => usageEvents.id, {
       onDelete: 'set null',
@@ -2413,7 +2428,14 @@ export const creditLedger = pgTable(
   (table) => ({
     reasonCheck: check(
       'credit_ledger_reason_check',
-      sql`reason in ('plan_grant', 'top_up', 'consumption', 'refund', 'adjustment', 'expiry')`,
+      sql`reason in ('plan_grant', 'top_up', 'consumption', 'refund', 'adjustment', 'expiry', 'reservation_hold', 'reservation_release')`,
+    ),
+    // A hold must be negative and a release positive. Without this, a sign error
+    // in the reservation code mints credits instead of withholding them, and the
+    // ledger — being append-only — has no way to notice.
+    holdSignCheck: check(
+      'credit_ledger_hold_sign_check',
+      sql`(reason <> 'reservation_hold' or delta < 0) and (reason <> 'reservation_release' or delta > 0)`,
     ),
     orgIdx: index('credit_ledger_org_idx').on(table.organizationId, desc(table.occurredAt)),
   }),
