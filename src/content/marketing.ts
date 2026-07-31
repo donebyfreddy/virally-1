@@ -23,7 +23,7 @@ export const hero = {
   /** Rendered as three lines; kept as an array so the break is content, not markup. */
   headlineLines: ["One idea.", "Every format.", "Every channel."],
   body: "Virally turns a single brief into scripts, videos, images and platform-ready campaigns—then helps you publish, test and improve them.",
-  primaryCta: { label: "Start creating", href: "/signup" },
+  primaryCta: { label: "Start creating", href: "/app" },
   secondaryCta: { label: "Watch the workflow", href: "#workflow" },
   trustPoints: [
     "Review before publishing",

@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/schema";
 import { onboardingProgress } from "@/lib/db/schema.fragment";
 import { bootstrapTenant } from "@/lib/auth/bootstrap";
+import { DEV_BYPASS_AUTH } from "@/lib/auth/dev-bypass";
 import type { SessionUser } from "@/lib/auth/session";
 import { effectiveRole } from "@/lib/permissions";
 
@@ -73,6 +74,23 @@ export async function resolveTenantContext(user: SessionUser): Promise<TenantRes
   const bootstrap = await bootstrapTenant(user);
   if (bootstrap.status === "failed") {
     return { status: "failed", detail: bootstrap.detail };
+  }
+
+  // TEMPORARY: auth is disabled (src/lib/auth/dev-bypass.ts). The onboarding
+  // wizard exists to collect brand/goal preferences before the dashboard —
+  // with no real signup to gate it, skip straight past it onto the
+  // placeholder brand `bootstrapTenant` already created.
+  if (DEV_BYPASS_AUTH) {
+    await db
+      .update(onboardingProgress)
+      .set({ completedAt: new Date() })
+      .where(
+        and(
+          eq(onboardingProgress.organizationId, bootstrap.context.organizationId),
+          eq(onboardingProgress.userId, user.id),
+          isNull(onboardingProgress.completedAt),
+        ),
+      );
   }
 
   const memberships = await db

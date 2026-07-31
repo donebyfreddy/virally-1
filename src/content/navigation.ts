@@ -19,7 +19,7 @@ export const navLinks: readonly NavLink[] = [
  * button anywhere.
  */
 export const ctas = {
-  primary: { label: "Start creating", href: "/auth/sign-up" },
+  primary: { label: "Start creating", href: "/app" },
   secondary: { label: "Watch the workflow", href: "#workflow" },
   login: { label: "Log in", href: "/auth/sign-in" },
   sales: { label: "Talk to sales", href: "/contact-sales" },

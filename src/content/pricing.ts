@@ -50,7 +50,7 @@ export const tiers: readonly PricingTier[] = [
       answer:
         "It produces variants of your brief, in your voice, and shows you every one before it publishes. If a hook is wrong you change the hook, not the whole campaign.",
     },
-    cta: { label: "Start creating", href: "/signup" },
+    cta: { label: "Start creating", href: "/app" },
     recommended: false,
   },
   {
@@ -73,7 +73,7 @@ export const tiers: readonly PricingTier[] = [
       answer:
         "Each client gets its own workspace with its own assets, voice, accounts and analytics. Nothing crosses between them, and every account action is logged.",
     },
-    cta: { label: "Start creating", href: "/signup" },
+    cta: { label: "Start creating", href: "/app" },
     recommended: true,
   },
   {
@@ -105,7 +105,7 @@ export const finalConversion = {
   id: "start",
   headline: "Your next campaign starts with one sentence.",
   body: "Plan it, create it, adapt it and distribute it from one system.",
-  primaryCta: { label: "Start creating", href: "/signup" },
+  primaryCta: { label: "Start creating", href: "/app" },
   secondaryCta: { label: "Talk to sales", href: "/contact-sales" },
   /** Recomputed from the Multiplier's own function, not hardcoded. */
   exampleNote: "Example campaign, computed with the Multiplier's default settings.",
