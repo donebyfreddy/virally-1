@@ -2,7 +2,26 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isAppConfigured } from "@/lib/env";
 import { auth } from "@/lib/auth/better-auth";
+import { db } from "@/lib/db";
+import { user as userTable } from "@/lib/db/schema";
+import { DEV_BYPASS_AUTH, DEV_USER } from "./dev-bypass";
 import { signInPathFor } from "./routes";
+
+/**
+ * Idempotent upsert of the fixed dev user row, so every foreign key that
+ * points at `user.id` (profiles, organization_members, ...) resolves the
+ * same way it would for a real Better Auth signup. Memoized per server
+ * instance since it never changes.
+ */
+let devUserEnsured: Promise<void> | null = null;
+function ensureDevUser(): Promise<void> {
+  devUserEnsured ??= db
+    .insert(userTable)
+    .values({ id: DEV_USER.id, name: DEV_USER.name, email: DEV_USER.email, emailVerified: true })
+    .onConflictDoNothing()
+    .then(() => undefined);
+  return devUserEnsured;
+}
 
 /**
  * Server-side session access for protected routes.
@@ -30,6 +49,11 @@ export type SessionState =
 /** Non-throwing read, for surfaces that render a configuration state instead. */
 export async function readSession(): Promise<SessionState> {
   if (!isAppConfigured()) return { status: "unconfigured" };
+
+  if (DEV_BYPASS_AUTH) {
+    await ensureDevUser();
+    return { status: "authenticated", user: DEV_USER };
+  }
 
   try {
     const result = await auth.api.getSession({ headers: await headers() });

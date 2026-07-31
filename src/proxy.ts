@@ -1,6 +1,7 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 import { isAppConfigured } from "@/lib/env";
+import { DEV_BYPASS_AUTH } from "@/lib/auth/dev-bypass";
 import {
   PRODUCT_HOME,
   isProtectedPath,
@@ -31,6 +32,12 @@ export async function proxy(request: NextRequest) {
   // instead handled by their layout, which renders an actionable
   // configuration state.
   if (!isAppConfigured()) {
+    return NextResponse.next({ request });
+  }
+
+  // TEMPORARY: auth is disabled — see src/lib/auth/dev-bypass.ts. Every
+  // request is the fixed dev user, so there is nothing to redirect.
+  if (DEV_BYPASS_AUTH) {
     return NextResponse.next({ request });
   }
 
