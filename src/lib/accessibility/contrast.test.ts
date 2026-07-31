@@ -95,7 +95,7 @@ describe("the chart series ramp", () => {
   // The ramp is the one exception to the two-accent taxonomy, so the terms of
   // that exception are asserted rather than trusted.
 
-  it("keeps every series legible as a line on the panel it is drawn on", () => {
+  it("keeps every series legible as a mark on the panel it is drawn on", () => {
     for (const series of chartSeries) {
       const ratio = contrastRatio(palette[series], palette["surface-1"]);
       expect(

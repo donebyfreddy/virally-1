@@ -242,27 +242,38 @@
        - Series colour is assigned by INDEX, never by sentiment.
        - Order is fixed. Series 1 is always the primary measure.
        - Nothing outside a chart may read these tokens.
-       - Every series is directly labelled, AND carries the matching
+       - Series colour NEVER carries text. Values, axis labels and
+         legend text wear the text tokens; a coloured swatch or mark
+         beside them carries identity. This is why the ramp is held to
+         the 3:1 graphical-object floor and not the 4.5:1 text floor.
+       - Every series is directly labelled, a legend is always present
+         for two or more series, AND each series carries the matching
          --chart-dash-N stroke pattern below.
 
-     That last rule is what makes the ramp accessible, and it is not
-     optional. These four colours are deliberately all bright (>=7:1 on
-     the panel) so a 2px line is legible on a dark surface — which means
-     they sit close together in LUMINANCE, and series 1 and 3 in
-     particular are near-identical in greyscale. Hue therefore cannot be
-     the thing that separates them. The dash pattern is. A chart that
-     uses these colours without the dash patterns is not accessible, and
-     the alternative — spreading the four across a luminance ladder —
-     was measured and rejected: it forces the darkest series down to
-     4.5:1, where a thin line disappears against the panel.
+     These four values are not hand-picked. They were produced by
+     searching the four hue families against the six-check palette
+     validator and are the most chromatic set that passes every check
+     against this exact surface:
 
-     Ratios are against --color-surface-1 (#10151c), the panel these
-     are drawn on, computed with WCAG 2.1 relative luminance.
+       lightness band     all 4 inside OKLCH L 0.48-0.67   PASS
+       chroma floor       all 4 >= 0.1                     PASS
+       CVD separation     worst adjacent dE 22.4 deutan,
+                          8.3 tritan                       PASS
+       normal vision      worst adjacent dE 24.7           PASS
+       contrast           all 4 >= 3:1                      PASS
+
+     The dash patterns stay mandatory regardless. Tritan separation of
+     8.3 clears the floor but not by much, and series 1 and 3 sit only
+     1.07 apart in luminance — so a reader who cannot separate blue from
+     violet is relying on the stroke pattern, not the hue.
+
+     Ratios below are against --color-surface-1 (#10151c), the panel
+     these are drawn on, computed with WCAG 2.1 relative luminance.
      ================================================================ */
-  --color-chart-1: #6ba8ff; /*  7.57:1 — primary measure (= --color-info) */
-  --color-chart-2: #38dfbd; /* 10.87:1 — comparison     (= --color-signal) */
-  --color-chart-3: #c08cf5; /*  7.25:1 — third series */
-  --color-chart-4: #f2b84b; /* 10.24:1 — fourth series  (= --color-warning) */
+  --color-chart-1: #2177f1; /* 4.34:1 — primary measure */
+  --color-chart-2: #00ae8a; /* 6.48:1 — comparison */
+  --color-chart-3: #a952ff; /* 4.66:1 — third series */
+  --color-chart-4: #c68000; /* 5.66:1 — fourth series */
 
   /* Stroke patterns — the non-colour channel that actually separates the
      series. Series 1 is solid because it is the primary measure; the
@@ -281,8 +292,8 @@
   --chart-track: var(--color-surface-3);
 
   /* Area fills, composited over --color-surface-1 only. */
-  --chart-fill-1: rgb(107 168 255 / 0.16);
-  --chart-fill-2: rgb(56 223 189 / 0.14);
+  --chart-fill-1: rgb(33 119 241 / 0.18);
+  --chart-fill-2: rgb(0 174 138 / 0.16);
 }
 
 @media (min-width: 48rem) {

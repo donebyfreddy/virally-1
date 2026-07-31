@@ -1,15 +1,46 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Eyebrow, Rule } from "@/components/primitives/Eyebrow";
-import { ButtonLink } from "@/components/primitives/ButtonLink";
-import { Badge } from "@/components/primitives/Badge";
-import { and, count, eq, isNull } from "drizzle-orm";
+import { AlertTriangle, Clock, Plus } from "lucide-react";
 import { readSession, displayName } from "@/lib/auth/session";
-import { db } from "@/lib/db";
-import { campaigns, connectedAccounts, contentItems, scheduledPosts } from "@/lib/db/schema.fragment";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
 import { can } from "@/lib/permissions";
+import { cn } from "@/lib/cn";
+import { relativeDay } from "@/lib/format";
+import {
+  WINDOW_DAYS,
+  readActivity,
+  readFunnel,
+  readGenerationActivity,
+  readKpis,
+  readPlatformTotals,
+  readQueue,
+  readTimeline,
+  type Trend,
+} from "@/lib/overview/data";
+import { AppPage } from "@/components/app-ui/AppPage";
+import { PageHeader } from "@/components/app-ui/PageHeader";
+import { Panel, PanelSection } from "@/components/app-ui/Panel";
+import { Metric, MetricRow, Delta } from "@/components/app-ui/Metric";
+import { EmptyState } from "@/components/app-ui/States";
+import { Progress } from "@/components/app-ui/Progress";
+import { CategoryBars } from "@/components/app-ui/charts/CategoryBars";
+/**
+ * Imported directly rather than through `next/dynamic`.
+ *
+ * It is a client component, so the client boundary already splits it into this
+ * route's client chunk — and because the chart is hand-rolled SVG with no
+ * charting library behind it, a separate lazy chunk would cost an extra request
+ * to defer a few kilobytes. `next/dynamic` with `ssr: false` is also not
+ * permitted inside a Server Component, and server-rendering it is desirable
+ * anyway: the data table it contains is then present on first paint.
+ */
+import { TimeSeriesChart } from "@/components/app-ui/charts/TimeSeriesChart";
+import { ButtonLink } from "@/components/primitives/ButtonLink";
+import { StatusDot } from "@/components/primitives/StatusDot";
+import { PLATFORM_OPTIONS } from "@/content/create";
+import { overviewCopy } from "@/content/overview";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -18,17 +49,25 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+const QUEUE_LIMIT = 6;
+const ACTIVITY_LIMIT = 6;
+
+const PLATFORM_LABELS = new Map(PLATFORM_OPTIONS.map((option) => [option.id, option.label]));
+
+const countFormatter = new Intl.NumberFormat("en-US");
+const compactFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
 /**
- * Overview.
+ * Overview — the operations centre.
  *
- * Every figure on this page is a real count from the user's own workspace. A new
- * account therefore sees zeros — and each zero says what will populate it and
- * offers the action that would. The brief forbids fake values in an empty state, and
- * an unexplained row of zeros is nearly as bad: it reads as a broken product.
- *
- * The full operations centre — charts, queue, account health, top content, live
- * activity — is Phase 4 and needs data to exist before it can be built honestly.
- * What is here is the part that is true today.
+ * Every figure is a real aggregate over this workspace. A workspace that has
+ * published nothing therefore has nothing to chart, and the page says so and
+ * offers the three actions that would change it rather than rendering a KPI
+ * strip of zeros against a flat line. An unexplained row of zeros reads as a
+ * broken product; a stated empty state reads as a new one.
  */
 export default async function OverviewPage() {
   const session = await readSession();
@@ -41,177 +80,401 @@ export default async function OverviewPage() {
   const { context } = resolution;
   const workspaceId = context.workspaceId;
 
-  // Five cheap aggregate counts rather than five row fetches: the page needs
-  // cardinality, not contents.
-  const [campaignRows, contentRows, accountRows, scheduledRows, publishedRows] = await Promise.all([
-    db.select({ value: count() }).from(campaigns)
-      .where(and(eq(campaigns.workspaceId, workspaceId), isNull(campaigns.deletedAt))),
-    db.select({ value: count() }).from(contentItems)
-      .where(and(eq(contentItems.workspaceId, workspaceId), isNull(contentItems.deletedAt))),
-    db.select({ value: count() }).from(connectedAccounts)
-      .where(and(eq(connectedAccounts.workspaceId, workspaceId), isNull(connectedAccounts.disconnectedAt))),
-    db.select({ value: count() }).from(scheduledPosts)
-      .where(and(eq(scheduledPosts.workspaceId, workspaceId), eq(scheduledPosts.status, "scheduled"))),
-    db.select({ value: count() }).from(scheduledPosts)
-      .where(and(eq(scheduledPosts.workspaceId, workspaceId), eq(scheduledPosts.status, "published"))),
+  const [kpis, timeline, platforms, queue, activity, funnel, generation] = await Promise.all([
+    readKpis(workspaceId),
+    readTimeline(workspaceId),
+    readPlatformTotals(workspaceId),
+    readQueue(workspaceId, QUEUE_LIMIT),
+    readActivity(workspaceId, ACTIVITY_LIMIT),
+    readFunnel(workspaceId),
+    readGenerationActivity(workspaceId),
   ]);
 
-  const counts = {
-    campaigns: campaignRows[0]?.value ?? 0,
-    content: contentRows[0]?.value ?? 0,
-    accounts: accountRows[0]?.value ?? 0,
-    scheduled: scheduledRows[0]?.value ?? 0,
-    published: publishedRows[0]?.value ?? 0,
-  };
-
   const name = displayName(context.user);
-  const isEmpty = counts.campaigns === 0 && counts.content === 0 && counts.accounts === 0;
+  const canCreate = can(context.role, "content.create");
+
+  // "Nothing at all" is a stronger signal than "no campaigns": a workspace
+  // mid-generation has content but no performance yet, and it should see the
+  // pipeline panels rather than the first-run state.
+  const hasNothing =
+    funnel.contentItems === 0 && funnel.variants === 0 && kpis.activeAccounts === 0;
+  const hasPerformance = timeline.length > 0;
 
   return (
-    <div className="mx-auto w-full max-w-[var(--container-wide)] px-[var(--gutter)] py-12">
-      <header>
-        <Eyebrow>{greeting()}</Eyebrow>
-        <h1 className="font-display mt-3 text-[length:var(--text-display-m)] leading-[var(--leading-display)] tracking-[var(--tracking-display)]">
-          {/* The real name when one exists; never a hardcoded placeholder. */}
-          {name ? `${greetingVerb()}, ${name}.` : `${greetingVerb()}.`}
-        </h1>
-        <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
-          <span>{context.workspaceName}</span>
-          <span aria-hidden="true">·</span>
-          <span>{context.brands.find((b) => b.id === context.brandId)?.name ?? "No brand"}</span>
-          <span aria-hidden="true">·</span>
-          <span>{context.organizationName}</span>
-        </p>
-      </header>
+    <AppPage>
+      <PageHeader
+        eyebrow={overviewCopy.eyebrow}
+        title={name ? `${greetingVerb()}, ${name}.` : `${greetingVerb()}.`}
+        meta={[
+          context.workspaceName,
+          context.brands.find((brand) => brand.id === context.brandId)?.name ?? "No brand",
+          overviewCopy.windowLabel(WINDOW_DAYS),
+        ]}
+        actions={
+          canCreate ? (
+            <ButtonLink href="/app/create">
+              <Plus aria-hidden="true" size={16} strokeWidth={2} />
+              New campaign
+            </ButtonLink>
+          ) : undefined
+        }
+      />
 
-      <Rule className="my-10" />
-
-      {isEmpty ? (
-        <EmptyOperation canCreate={can(context.role, "content.create")} />
-      ) : (
-        <section aria-labelledby="operation-state">
-          <h2
-            id="operation-state"
-            className="font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-secondary)]"
-          >
-            Your operation
-          </h2>
-
-          <dl className="mt-6 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
-            <Metric
-              label="Campaigns"
-              value={counts.campaigns}
-              explains="Campaigns created in this workspace."
-            />
-            <Metric
-              label="Content items"
-              value={counts.content}
-              explains="Items generated or uploaded, before per-platform variants."
-            />
-            <Metric
-              label="Connected accounts"
-              value={counts.accounts}
-              explains="Accounts authorised for publishing."
-            />
-            <Metric
-              label="Scheduled posts"
-              value={counts.scheduled}
-              explains="Approved and waiting for their publish time."
-            />
-            <Metric
-              label="Published posts"
-              value={counts.published}
-              explains="Confirmed published by the platform."
-            />
-          </dl>
-        </section>
-      )}
-
-      <Rule className="my-10" />
-
-      {/* Stated plainly rather than filling the space with placeholder charts. */}
-      <section aria-labelledby="build-state">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2
-            id="build-state"
-            className="font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-secondary)]"
-          >
-            Performance reporting
-          </h2>
-          <Badge tone="warning">PHASE 4</Badge>
+      {hasNothing ? (
+        <div className="mt-[var(--space-8)] max-w-[var(--measure-prose)]">
+          <EmptyState
+            title={overviewCopy.empty.title}
+            body={overviewCopy.empty.body}
+            actions={
+              <>
+                {canCreate && <ButtonLink href="/app/create">Create first campaign</ButtonLink>}
+                <ButtonLink href="/app/accounts" variant="secondary">
+                  Connect an account
+                </ButtonLink>
+                <ButtonLink href="/app/library" variant="secondary">
+                  Upload existing content
+                </ButtonLink>
+              </>
+            }
+          />
         </div>
-        <p className="prose-measure mt-4 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-          Views, engagement, retention and follower growth appear here once content
-          has been published to a connected account and a metrics sync has run. The
-          charts are not rendered yet — showing them filled with sample numbers
-          would misrepresent an account that has published nothing.
-        </p>
-      </section>
+      ) : (
+        <div className="mt-[var(--space-8)] flex flex-col gap-[var(--space-6)]">
+          {/* KPI strip. Borderless metrics inside one panel rather than five
+              cards — a row of numbers is one object, and boxing each turns five
+              facts into five competing surfaces. */}
+          <Panel>
+            <MetricRow columns={5}>
+              <TrendMetric
+                label="Views"
+                trend={kpis.views}
+                format={compactFormatter}
+                explains={`Across all platforms, last ${WINDOW_DAYS} days.`}
+              />
+              <TrendMetric
+                label="Posts published"
+                trend={kpis.postsPublished}
+                format={countFormatter}
+                explains="Confirmed published by the platform."
+              />
+              <TrendMetric
+                label="Engagement rate"
+                trend={kpis.engagementRateBp}
+                format={countFormatter}
+                asBasisPoints
+                explains="Daily average, weighted equally per day."
+              />
+              <TrendMetric
+                label="Followers gained"
+                trend={kpis.followersGained}
+                format={countFormatter}
+                explains="Net new followers on connected accounts."
+              />
+              <Metric
+                label="Active accounts"
+                value={countFormatter.format(kpis.activeAccounts)}
+                explains="Authorised and not disconnected."
+              />
+            </MetricRow>
+          </Panel>
+
+          {/* An asymmetric split rather than an even grid: the timeline is the
+              page's primary reading and earns the wider column. */}
+          <div className="grid gap-[var(--space-6)] xl:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
+            <Panel className="min-w-0">
+              {hasPerformance ? (
+                <TimeSeriesChart
+                  title={`Performance — last ${WINDOW_DAYS} days`}
+                  series={[
+                    {
+                      id: "views",
+                      label: "Views",
+                      points: timeline.map((point) => ({
+                        x: new Date(point.day).getTime(),
+                        y: point.views,
+                      })),
+                    },
+                    {
+                      id: "engagements",
+                      label: "Engagements",
+                      points: timeline.map((point) => ({
+                        x: new Date(point.day).getTime(),
+                        y: point.engagements,
+                      })),
+                    },
+                  ]}
+                  area
+                  formatValue={(value) => compactFormatter.format(value)}
+                  formatX={(value) =>
+                    new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  }
+                />
+              ) : (
+                <PanelSection title="Performance" id="overview-performance">
+                  <p className="prose-measure text-[length:var(--text-app-meta)] text-[color:var(--color-text-muted)]">
+                    {overviewCopy.noPerformance}
+                  </p>
+                </PanelSection>
+              )}
+            </Panel>
+
+            <Panel className="min-w-0">
+              <PanelSection title="Platform distribution" id="overview-platforms">
+                {platforms.length > 0 ? (
+                  <CategoryBars
+                    data={platforms.map((row) => ({
+                      id: row.platform,
+                      label: PLATFORM_LABELS.get(row.platform) ?? row.platform,
+                      value: row.views,
+                      detail: `${countFormatter.format(row.posts)} posts`,
+                    }))}
+                    formatValue={(value) => compactFormatter.format(value)}
+                  />
+                ) : (
+                  <p className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-muted)]">
+                    {overviewCopy.noPlatformData}
+                  </p>
+                )}
+              </PanelSection>
+            </Panel>
+          </div>
+
+          <div className="grid gap-[var(--space-6)] xl:grid-cols-3">
+            <Panel className="min-w-0">
+              <PanelSection
+                title="Publishing queue"
+                id="overview-queue"
+                aside={
+                  <Link
+                    href="/app/calendar"
+                    className="rounded-[var(--radius-sm)] font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)] transition-colors duration-[var(--dur-instant)] hover:text-[color:var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+                  >
+                    Calendar
+                  </Link>
+                }
+              >
+                {queue.length > 0 ? (
+                  <ul className="flex flex-col">
+                    {queue.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-[var(--space-3)] border-t border-[var(--color-border-hairline)] py-[var(--space-3)] first:border-t-0 first:pt-0"
+                      >
+                        {/* Icon plus text, never colour alone: a failed post is
+                            distinguishable from a waiting one without hue. */}
+                        {item.status === "failed" ? (
+                          <AlertTriangle
+                            aria-hidden="true"
+                            size={14}
+                            strokeWidth={1.5}
+                            className="shrink-0 text-[color:var(--color-error)]"
+                          />
+                        ) : (
+                          <Clock
+                            aria-hidden="true"
+                            size={14}
+                            strokeWidth={1.5}
+                            className="shrink-0 text-[color:var(--color-text-muted)]"
+                          />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[length:var(--text-app-meta)] text-[color:var(--color-text-primary)]">
+                            {item.campaignName ?? "Untitled campaign"}
+                          </span>
+                          <span className="block font-utility text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+                            {PLATFORM_LABELS.get(item.platform) ?? item.platform}
+                            {item.accountHandle ? ` · @${item.accountHandle}` : ""}
+                            {" · "}
+                            {relativeDay(item.scheduledFor)}
+                            {item.status === "failed" ? " · failed" : ""}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-muted)]">
+                    {overviewCopy.noQueue}
+                  </p>
+                )}
+              </PanelSection>
+            </Panel>
+
+            {/* Teal only where the machine is genuinely working — an idle queue
+                is neutral, not teal. */}
+            <Panel className="min-w-0">
+              <PanelSection title="Generation activity" id="overview-generation">
+                <dl className="flex flex-col gap-[var(--space-3)]">
+                  <div className="flex items-center justify-between gap-[var(--space-3)]">
+                    <dt className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+                      Running
+                    </dt>
+                    <dd className="flex items-center gap-[var(--space-3)]">
+                      {generation.running > 0 && <StatusDot status="generating" showLabel={false} />}
+                      <span className="font-utility text-[length:var(--text-metric-s)] tabular-nums text-[color:var(--color-text-primary)]">
+                        {countFormatter.format(generation.running)}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-[var(--space-3)]">
+                    <dt className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+                      Queued
+                    </dt>
+                    <dd className="font-utility text-[length:var(--text-metric-s)] tabular-nums text-[color:var(--color-text-primary)]">
+                      {countFormatter.format(generation.queued)}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-[var(--space-3)] border-t border-[var(--color-border-hairline)] pt-[var(--space-3)]">
+                    <dt className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+                      Failed
+                    </dt>
+                    <dd
+                      className={cn(
+                        "font-utility text-[length:var(--text-metric-s)] tabular-nums",
+                        generation.failed > 0
+                          ? "text-[color:var(--color-error)]"
+                          : "text-[color:var(--color-text-primary)]",
+                      )}
+                    >
+                      {countFormatter.format(generation.failed)}
+                    </dd>
+                  </div>
+                </dl>
+
+                {generation.running === 0 && generation.queued === 0 && generation.failed === 0 && (
+                  <p className="mt-[var(--space-4)] text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+                    {overviewCopy.noJobs}
+                  </p>
+                )}
+              </PanelSection>
+            </Panel>
+
+            {/* The content funnel — the product's core claim, made measurable:
+                one brief becoming many items becoming many published posts. */}
+            <Panel className="min-w-0">
+              <PanelSection title="Content funnel" id="overview-funnel">
+                <FunnelRow label="Concepts" value={funnel.concepts} ceiling={funnel.concepts} />
+                <FunnelRow
+                  label="Content items"
+                  value={funnel.contentItems}
+                  ceiling={Math.max(funnel.concepts, funnel.contentItems)}
+                />
+                <FunnelRow label="Platform variants" value={funnel.variants} ceiling={funnel.variants} />
+                <FunnelRow label="Scheduled" value={funnel.scheduled} ceiling={funnel.variants} />
+                <FunnelRow label="Published" value={funnel.published} ceiling={funnel.variants} />
+              </PanelSection>
+            </Panel>
+          </div>
+
+          {activity.length > 0 && (
+            <Panel>
+              <PanelSection title="Recent activity" id="overview-activity">
+                <ul className="flex flex-col">
+                  {activity.map((event) => (
+                    <li
+                      key={event.id}
+                      className="flex items-baseline gap-[var(--space-4)] border-t border-[var(--color-border-hairline)] py-[var(--space-3)] first:border-t-0 first:pt-0"
+                    >
+                      <span className="min-w-0 flex-1 text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+                        {event.summary ?? event.kind}
+                      </span>
+                      <span className="shrink-0 font-utility text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+                        {relativeDay(event.createdAt)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </PanelSection>
+            </Panel>
+          )}
+        </div>
+      )}
+    </AppPage>
+  );
+}
+
+/**
+ * A KPI with its comparison.
+ *
+ * `changePercent` is null when the previous window was zero, and that renders as
+ * "no prior data" rather than as a percentage — a delta against a zero baseline
+ * is not a measurable change, and "+100%" would imply it was.
+ */
+function TrendMetric({
+  label,
+  trend,
+  format,
+  explains,
+  asBasisPoints = false,
+}: {
+  label: string;
+  trend: Trend;
+  format: Intl.NumberFormat;
+  explains: string;
+  asBasisPoints?: boolean;
+}) {
+  const value = asBasisPoints ? `${(trend.value / 100).toFixed(2)}%` : format.format(trend.value);
+
+  return (
+    <Metric
+      label={label}
+      value={value}
+      explains={explains}
+      adornment={
+        trend.changePercent === null ? (
+          <span className="font-utility text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+            no prior data
+          </span>
+        ) : (
+          <Delta percent={trend.changePercent} />
+        )
+      }
+    />
+  );
+}
+
+/** One step of the funnel, as a share of the widest step at or above it. */
+function FunnelRow({
+  label,
+  value,
+  ceiling,
+}: {
+  label: string;
+  value: number;
+  ceiling: number;
+}) {
+  return (
+    <div className="border-t border-[var(--color-border-hairline)] py-[var(--space-3)] first:border-t-0 first:pt-0">
+      <div className="flex items-baseline justify-between gap-[var(--space-3)]">
+        <span className="text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+          {label}
+        </span>
+        <span className="font-utility text-[length:var(--text-app-cell)] tabular-nums text-[color:var(--color-text-primary)]">
+          {countFormatter.format(value)}
+        </span>
+      </div>
+      {ceiling > 0 && (
+        <Progress
+          percent={(value / ceiling) * 100}
+          label={`${label} as a share of the pipeline`}
+          showValue={false}
+          className="mt-[var(--space-2)]"
+        />
+      )}
     </div>
   );
 }
 
 /**
- * Local-time greeting. Computed server-side from the server's clock, which is a
- * known approximation: the profile carries a timezone, and Phase 4 uses it. Saying
- * "Good morning" to someone at midnight is a small wrongness, so it is flagged
- * rather than left to look intentional.
+ * Local-time greeting, from the server's clock.
+ *
+ * A known approximation: the profile carries a timezone and this does not read
+ * it yet, so a user far from the server may be greeted with the wrong part of
+ * day. Flagged rather than left to look deliberate.
  */
-function greeting(): string {
-  return "OVERVIEW";
-}
-
 function greetingVerb(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
-}
-
-function Metric({
-  label,
-  value,
-  explains,
-}: {
-  label: string;
-  value: number;
-  explains: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <dt className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
-        {label}
-      </dt>
-      {/* Tabular figures so a column of numbers aligns. */}
-      <dd className="font-utility text-[length:var(--text-display-m)] tabular-nums text-[color:var(--color-text-primary)]">
-        {value.toLocaleString("en-US")}
-      </dd>
-      <p className="text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
-        {explains}
-      </p>
-    </div>
-  );
-}
-
-function EmptyOperation({ canCreate }: { canCreate: boolean }) {
-  return (
-    <section aria-labelledby="empty-state" className="max-w-[var(--measure-prose)]">
-      <h2 id="empty-state" className="font-display text-[length:var(--text-title)]">
-        Your content operation is ready.
-      </h2>
-      <p className="mt-3 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-        Nothing has been created yet, so there is no performance data to show. Create
-        a campaign or connect a channel to begin.
-      </p>
-      <div className="mt-8 flex flex-wrap gap-3">
-        {canCreate && <ButtonLink href="/app/create">Create first campaign</ButtonLink>}
-        <ButtonLink href="/app/accounts" variant="secondary">
-          Connect an account
-        </ButtonLink>
-        <ButtonLink href="/app/library" variant="secondary">
-          Upload existing content
-        </ButtonLink>
-      </div>
-    </section>
-  );
 }

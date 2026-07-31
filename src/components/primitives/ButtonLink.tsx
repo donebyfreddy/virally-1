@@ -1,12 +1,17 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/cn";
+// Imported from the directive-free style module, NOT from `./Button`. Button is
+// a client component, and a server-rendered ButtonLink importing these strings
+// through it receives client references that `cn()` drops — which silently
+// rendered every ButtonLink on a server page as unstyled text.
 import {
   buttonBase,
+  buttonSizeClasses,
   variantClasses,
   type ButtonSize,
   type ButtonVariant,
-} from "./Button";
+} from "./buttonStyles";
 
 type ButtonLinkProps = {
   href: string;
@@ -17,10 +22,9 @@ type ButtonLinkProps = {
   iconTrailing?: ReactNode;
 } & Omit<ComponentProps<typeof Link>, "href" | "className" | "children">;
 
-const sizeClasses: Record<ButtonSize, string> = {
-  md: "px-4 py-2.5",
-  lg: "px-6 py-3.5 text-[length:var(--text-body-s)]",
-};
+// Shared with Button rather than duplicated, so an anchor styled as a button
+// stays pixel-identical to one.
+const sizeClasses = buttonSizeClasses;
 
 /**
  * An anchor that looks like a button. Navigation must stay an `<a>` so

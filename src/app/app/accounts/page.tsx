@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Eyebrow, Rule } from "@/components/primitives/Eyebrow";
+import { Rule } from "@/components/primitives/Eyebrow";
+import { AppPage } from "@/components/app-ui/AppPage";
+import { PageHeader } from "@/components/app-ui/PageHeader";
 import { Badge } from "@/components/primitives/Badge";
 import { ButtonLink } from "@/components/primitives/ButtonLink";
 import { AuthMessage } from "@/components/auth/AuthMessage";
@@ -77,35 +79,30 @@ export default async function AccountsPage({
   const attention = slotsNeedingAttention(network.grid);
 
   return (
-    <div className="mx-auto w-full max-w-[var(--container-wide)] px-[var(--gutter)] py-12">
-      <header>
-        <Eyebrow>{accountsPage.eyebrow}</Eyebrow>
-        <h1 className="font-display mt-3 text-[length:var(--text-display-m)] leading-[var(--leading-display)] tracking-[var(--tracking-display)]">
-          {accountsPage.heading}
-        </h1>
-        <p className="prose-measure mt-4 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-          {accountsPage.intro}
-        </p>
-        {/* Compliance copy, quoted verbatim from the design reference. Not a tooltip,
-            not truncated, and asserted by an e2e test. */}
-        <p className="prose-measure mt-3 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-          {authorisationBoundary}
-        </p>
-      </header>
+    <AppPage>
+      <PageHeader
+        eyebrow={accountsPage.eyebrow}
+        title={accountsPage.heading}
+        description={accountsPage.intro}
+        meta={[usageSummary(network.usage)]}
+        actions={
+          mayConnect && network.usage.availableSlots > 0 ? (
+            <ButtonLink href="/app/accounts/launch" variant="primary">
+              {slotActions.prepare}
+            </ButtonLink>
+          ) : undefined
+        }
+      />
 
-      <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <p className="font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)] tabular-nums text-[color:var(--color-text-primary)]">
-          {usageSummary(network.usage)}
-        </p>
-        {mayConnect && network.usage.availableSlots > 0 ? (
-          <ButtonLink href="/app/accounts/launch" variant="primary">
-            {slotActions.prepare}
-          </ButtonLink>
-        ) : null}
-      </div>
+      {/* Compliance copy, quoted verbatim from the design reference. Not a
+          tooltip, not truncated, and asserted by an e2e test — so it stays
+          outside PageHeader's description slot, which truncates by measure. */}
+      <p className="prose-measure mt-[var(--space-4)] text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
+        {authorisationBoundary}
+      </p>
 
       {/* Notices, most urgent first. */}
-      <div className="mt-6 flex max-w-[46rem] flex-col gap-3">
+      <div className="mt-[var(--space-6)] flex max-w-[46rem] flex-col gap-[var(--space-3)]">
         {errorCode && accountErrors[errorCode] ? (
           <AuthMessage tone="error" body={accountErrors[errorCode]} />
         ) : null}
@@ -289,6 +286,6 @@ export default async function AccountsPage({
           })}
         </ul>
       </section>
-    </div>
+    </AppPage>
   );
 }
