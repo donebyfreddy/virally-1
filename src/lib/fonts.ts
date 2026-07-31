@@ -21,7 +21,11 @@ export const fontDisplay = Bricolage_Grotesque({
 export const fontBody = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-  weight: ["400", "500"],
+  // 600 exists for the product only: it is the heading weight for the
+  // authenticated app, which does not load the Bricolage display face at all.
+  // The marketing site still uses 400/500 here and Bricolage 800 for display,
+  // so this adds one weight to the site's budget rather than a fourth family.
+  weight: ["400", "500", "600"],
   display: "swap",
   preload: true,
   fallback: ["ui-sans-serif", "system-ui", "sans-serif"],

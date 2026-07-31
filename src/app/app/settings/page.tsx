@@ -61,7 +61,6 @@ export default async function SettingsPage() {
   return (
     <AppPage>
       <PageHeader
-        eyebrow={settingsCopy.eyebrow}
         title={settingsCopy.title}
         description={settingsCopy.body}
         meta={[context.organizationName, context.workspaceName, ROLE_LABELS[context.role]]}

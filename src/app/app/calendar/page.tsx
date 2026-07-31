@@ -1,21 +1,36 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, asc, eq, gte, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, ilike, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
 import { db } from "@/lib/db";
-import { campaigns, connectedAccounts, scheduledPosts } from "@/lib/db/schema.fragment";
-import { AppPage } from "@/components/app-ui/AppPage";
+import {
+  campaigns,
+  connectedAccounts,
+  contentItems,
+  contentVariants,
+  scheduledPosts,
+} from "@/lib/db/schema.fragment";
+import { cn } from "@/lib/cn";
+import { AppPage, PageStack } from "@/components/app-ui/AppPage";
 import { PageHeader } from "@/components/app-ui/PageHeader";
-import { Panel } from "@/components/app-ui/Panel";
+import { Card, CardBody, CardFooter } from "@/components/app-ui/Card";
 import { FilterBar } from "@/components/app-ui/FilterBar";
 import { EmptyState } from "@/components/app-ui/States";
-import { MonthGrid, type CalendarEntry } from "@/components/calendar/MonthGrid";
-import { AgendaList } from "@/components/calendar/AgendaList";
+import { MonthGrid, WeekGrid, type CalendarEntry } from "@/components/calendar/MonthGrid";
+import { AgendaList, DayTimeline } from "@/components/calendar/AgendaList";
 import { ButtonLink } from "@/components/primitives/ButtonLink";
 import { PLATFORM_OPTIONS } from "@/content/create";
-import { calendarCopy, CALENDAR_VIEWS, POST_STATUS_OPTIONS } from "@/content/calendar";
+import {
+  CALENDAR_STEP_UNIT,
+  CALENDAR_VIEWS,
+  POST_STATUS_OPTIONS,
+  calendarCopy,
+  type CalendarView,
+} from "@/content/calendar";
 
 export const metadata: Metadata = {
   title: "Calendar",
@@ -28,18 +43,38 @@ const VALID_PLATFORMS = new Set<string>(PLATFORM_OPTIONS.map((option) => option.
 const VALID_STATUSES = new Set<string>(POST_STATUS_OPTIONS.map((option) => option.id));
 const VALID_VIEWS = new Set<string>(CALENDAR_VIEWS.map((option) => option.id));
 
+/** Campaigns offered in the filter. Capped, and ordered so the cap is stable. */
+const CAMPAIGN_OPTION_LIMIT = 200;
+
+/**
+ * A native `<select>` is as wide as its widest option and a campaign name has no
+ * length limit, so one long name would push the filter row past a 390px
+ * viewport. `FilterBar`'s select carries no max width of its own, so the cap is
+ * applied to the data on the way in.
+ */
+const CAMPAIGN_LABEL_MAX = 32;
+
+function optionLabel(name: string): string {
+  return name.length > CAMPAIGN_LABEL_MAX ? `${name.slice(0, CAMPAIGN_LABEL_MAX - 1)}…` : name;
+}
+
 /**
  * Calendar.
  *
- * Month and agenda views only. Week and day were specified, but a week grid is a
- * month grid with a different column count and a day view is the agenda filtered
- * to one date — shipping them as separate half-built surfaces would add two more
- * layouts to keep consistent for no new capability. The agenda is the honest
- * version of "day", and it is also the accessible equivalent of the grid.
+ * Four views over one query. Month, week and day differ in the range the page
+ * loads — a month, a Monday-first week, a single day — so each is a real view
+ * rather than the same data relabelled; agenda is the linear form of whatever
+ * range is loaded, and the grids fall back to it below `md`.
+ *
+ * View and range both live in the URL and both are validated, so a filtered
+ * calendar is a shareable link, the back button steps through it, and the page
+ * stays a server component that re-queries rather than fetching a year and
+ * hiding cells on the client. The stepper and the switcher are `<Link>`s for the
+ * same reason: `router.replace` would leave the back button doing nothing.
  *
  * Drag-to-reschedule is not implemented. Rescheduling writes to the publishing
  * pipeline, and a drag that appears to work but does not persist is worse than
- * no drag — so the month grid is read-and-navigate, and each entry links to its
+ * no drag — so every view is read-and-navigate, and each post links to its
  * content.
  */
 export default async function CalendarPage({
@@ -62,29 +97,31 @@ export default async function CalendarPage({
   };
 
   const viewParam = single("view");
-  const view = viewParam && VALID_VIEWS.has(viewParam) ? viewParam : "month";
+  const view: CalendarView =
+    viewParam && VALID_VIEWS.has(viewParam) ? (viewParam as CalendarView) : "month";
 
-  // The month being viewed, as YYYY-MM. Defaults to the current month. Parsed
-  // strictly: an unparseable value falls back rather than producing an Invalid
-  // Date that would make every query return nothing.
-  const monthParam = single("month");
-  const anchor = parseMonth(monthParam) ?? startOfMonth(new Date());
+  // The anchor is a day, not a month, because week and day views cannot be
+  // addressed by one. `month=YYYY-MM` is still accepted so links minted before
+  // the week and day views existed keep resolving.
+  const anchor =
+    parseDay(single("date")) ?? parseMonth(single("month")) ?? startOfUtcDay(new Date());
 
-  const rangeStart = anchor;
-  const rangeEnd = new Date(
-    Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1, 0, 0, 0, 0),
-  );
+  const range = rangeFor(view, anchor);
+  const todayIso = isoDay(new Date());
 
+  const query = single("q")?.trim() ?? "";
   const platformParam = single("platform");
   const statusParam = single("status");
   const campaignParam = single("campaign");
 
   const conditions: SQL[] = [
     eq(scheduledPosts.workspaceId, context.workspaceId),
-    gte(scheduledPosts.scheduledFor, rangeStart),
-    lt(scheduledPosts.scheduledFor, rangeEnd),
+    gte(scheduledPosts.scheduledFor, range.start),
+    lt(scheduledPosts.scheduledFor, range.end),
   ];
 
+  // Each filter is validated against its own option set before reaching SQL, so
+  // a hand-edited URL cannot introduce a predicate of its own.
   if (platformParam && VALID_PLATFORMS.has(platformParam)) {
     conditions.push(sql`${scheduledPosts.platform}::text = ${platformParam}`);
   }
@@ -94,6 +131,14 @@ export default async function CalendarPage({
   if (campaignParam && /^[0-9a-f-]{36}$/i.test(campaignParam)) {
     conditions.push(eq(scheduledPosts.campaignId, campaignParam));
   }
+  if (query) {
+    // Both, because a post is found by either name a user remembers it under.
+    const search = or(
+      ilike(contentItems.title, `%${query}%`),
+      ilike(campaigns.name, `%${query}%`),
+    );
+    if (search) conditions.push(search);
+  }
 
   const [rows, campaignOptions] = await Promise.all([
     db
@@ -102,95 +147,325 @@ export default async function CalendarPage({
         scheduledFor: scheduledPosts.scheduledFor,
         platform: scheduledPosts.platform,
         status: scheduledPosts.status,
+        timezone: scheduledPosts.timezone,
         contentVariantId: scheduledPosts.contentVariantId,
+        titleOverride: contentVariants.titleOverride,
+        itemTitle: contentItems.title,
         campaignName: campaigns.name,
         username: connectedAccounts.username,
+        displayName: connectedAccounts.displayName,
+        avatarUrl: connectedAccounts.avatarUrl,
       })
       .from(scheduledPosts)
       .leftJoin(campaigns, eq(scheduledPosts.campaignId, campaigns.id))
       .leftJoin(connectedAccounts, eq(scheduledPosts.connectedAccountId, connectedAccounts.id))
+      .leftJoin(contentVariants, eq(scheduledPosts.contentVariantId, contentVariants.id))
+      .leftJoin(contentItems, eq(contentVariants.contentItemId, contentItems.id))
       .where(and(...conditions))
       .orderBy(asc(scheduledPosts.scheduledFor)),
 
     db
       .select({ id: campaigns.id, label: campaigns.name })
       .from(campaigns)
-      .where(eq(campaigns.workspaceId, context.workspaceId))
-      .limit(50),
+      .where(and(eq(campaigns.workspaceId, context.workspaceId), isNull(campaigns.deletedAt)))
+      .orderBy(asc(campaigns.name))
+      .limit(CAMPAIGN_OPTION_LIMIT),
   ]);
 
   const entries: readonly CalendarEntry[] = rows.map((row) => ({
     id: row.id,
-    // Serialised for the client boundary; a Date cannot cross it.
+    // Serialised for the component boundary and for the UTC day key every view
+    // buckets by.
     scheduledFor: row.scheduledFor.toISOString(),
     platform: row.platform,
     status: row.status,
+    timezone: row.timezone,
+    // The variant's override wins, because that is the copy that will actually
+    // be posted for this platform.
+    title: row.titleOverride ?? row.itemTitle,
     campaignName: row.campaignName,
-    username: row.username,
+    accountName: row.username ?? row.displayName,
+    avatarUrl: row.avatarUrl,
     href: row.contentVariantId ? `/app/content?variant=${row.contentVariantId}` : null,
   }));
 
-  const filtered = Boolean(platformParam || statusParam || campaignParam);
+  const filtered = Boolean(query || platformParam || statusParam || campaignParam);
+  const rangeLabel = labelFor(view, range.start);
+  const stepUnit = CALENDAR_STEP_UNIT[view];
+
+  // Every generated URL carries the filters and nothing else: an unrecognised
+  // param the user arrived with is not propagated.
+  const carried = new URLSearchParams();
+  if (query) carried.set("q", query);
+  if (platformParam && VALID_PLATFORMS.has(platformParam)) carried.set("platform", platformParam);
+  if (statusParam && VALID_STATUSES.has(statusParam)) carried.set("status", statusParam);
+  if (campaignParam && /^[0-9a-f-]{36}$/i.test(campaignParam)) {
+    carried.set("campaign", campaignParam);
+  }
+
+  const hrefFor = (nextView: CalendarView, nextDate: string): string => {
+    const next = new URLSearchParams(carried);
+    next.set("view", nextView);
+    next.set("date", nextDate);
+    return `/app/calendar?${next.toString()}`;
+  };
+
+  const dayHref = (isoDate: string): string => hrefFor("day", isoDate);
+
+  // Drops the filters and keeps the place. Built without `carried`, which is the
+  // thing being cleared.
+  const clearHref = `/app/calendar?view=${view}&date=${isoDay(anchor)}`;
 
   return (
     <AppPage width="full">
-      <PageHeader
-        eyebrow={calendarCopy.eyebrow}
-        title={calendarCopy.title}
-        description={calendarCopy.body}
-        meta={[
-          monthLabel(anchor),
-          entries.length === 1 ? "1 scheduled post" : `${entries.length} scheduled posts`,
-        ]}
-      />
-
-      <Panel className="mt-[var(--space-8)]">
-        <FilterBar
-          searchPlaceholder="Search campaigns"
-          filters={[
-            { key: "view", label: "View", options: CALENDAR_VIEWS },
-            { key: "platform", label: "Platform", options: PLATFORM_OPTIONS },
-            { key: "status", label: "Status", options: POST_STATUS_OPTIONS },
-            { key: "campaign", label: "Campaign", options: campaignOptions },
-          ]}
+      <PageStack>
+        <PageHeader
+          title={calendarCopy.title}
+          description={calendarCopy.body}
+          meta={[calendarCopy.count(entries.length), calendarCopy.timezoneNote]}
         />
 
-        <div className="mt-[var(--space-6)]">
-          {entries.length === 0 && (
-            <EmptyState
-              title={
-                filtered ? calendarCopy.noMatches.title : calendarCopy.empty.title
-              }
-              body={filtered ? calendarCopy.noMatches.body : calendarCopy.empty.body}
-              actions={
-                filtered ? (
-                  <ButtonLink href="/app/calendar" variant="secondary">
-                    Clear filters
-                  </ButtonLink>
-                ) : (
-                  <ButtonLink href="/app/content">Review content</ButtonLink>
-                )
-              }
+        <Card>
+          {/* Range and view sit above the grid, never over it: a calendar covered
+              by its own controls is a calendar you cannot read while filtering. */}
+          <CardBody
+            pad="tight"
+            className="flex flex-wrap items-center gap-[var(--space-2)] border-b border-[var(--border-subtle)]"
+          >
+            <StepLink
+              href={hrefFor(view, isoDay(shift(view, anchor, -1)))}
+              label={calendarCopy.previous(stepUnit)}
+              direction="previous"
             />
-          )}
 
-          {entries.length > 0 && view === "month" && (
-            <MonthGrid anchorIso={anchor.toISOString()} entries={entries} />
-          )}
+            <h2 className="app-section-title whitespace-nowrap text-[color:var(--text-primary)]">
+              {rangeLabel}
+            </h2>
 
-          {entries.length > 0 && view === "agenda" && <AgendaList entries={entries} />}
-        </div>
+            <StepLink
+              href={hrefFor(view, isoDay(shift(view, anchor, 1)))}
+              label={calendarCopy.next(stepUnit)}
+              direction="next"
+            />
 
-        {/* Stated plainly rather than implied by a missing affordance. */}
-        <p className="mt-[var(--space-6)] border-t border-[var(--color-border-hairline)] pt-[var(--space-4)] text-[length:var(--text-utility-xs)] leading-[var(--leading-snug)] text-[color:var(--color-text-muted)]">
-          {calendarCopy.reschedulingUnavailable}
-        </p>
-      </Panel>
+            <Link
+              href={hrefFor(view, todayIso)}
+              className={cn(
+                "flex h-8 items-center gap-[var(--space-1)] rounded-[var(--radius-control)] px-[var(--space-2)]",
+                "text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]",
+                "transition-colors duration-[var(--dur-instant)]",
+                "hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+              )}
+            >
+              <CalendarDays aria-hidden="true" size={14} strokeWidth={1.75} />
+              {calendarCopy.today}
+            </Link>
+
+            <ViewSwitcher current={view} anchorIso={isoDay(anchor)} hrefFor={hrefFor} />
+          </CardBody>
+
+          <CardBody pad="tight" className="border-b border-[var(--border-subtle)]">
+            <FilterBar
+              searchPlaceholder="Search titles and campaigns"
+              filters={[
+                { key: "platform", label: "Platform", options: PLATFORM_OPTIONS },
+                { key: "status", label: "Status", options: POST_STATUS_OPTIONS },
+                {
+                  key: "campaign",
+                  label: "Campaign",
+                  options: campaignOptions.map((option) => ({
+                    id: option.id,
+                    label: optionLabel(option.label),
+                  })),
+                },
+              ]}
+            />
+          </CardBody>
+
+          <CardBody pad="none">
+            {entries.length === 0 && (
+              <EmptyState
+                bare
+                icon={<CalendarDays size={20} strokeWidth={1.75} />}
+                title={
+                  filtered
+                    ? calendarCopy.noMatches.title(rangeLabel)
+                    : calendarCopy.empty.title(rangeLabel)
+                }
+                body={filtered ? calendarCopy.noMatches.body : calendarCopy.empty.body}
+                actions={
+                  filtered ? (
+                    <ButtonLink href={clearHref} variant="secondary">
+                      Clear filters
+                    </ButtonLink>
+                  ) : (
+                    <ButtonLink href="/app/content">Review content</ButtonLink>
+                  )
+                }
+              />
+            )}
+
+            {entries.length > 0 && (view === "month" || view === "week") && (
+              <>
+                <div className="hidden md:block">
+                  {view === "month" ? (
+                    <MonthGrid
+                      monthStartIso={range.start.toISOString()}
+                      todayIso={todayIso}
+                      entries={entries}
+                      dayHref={dayHref}
+                      rangeLabel={rangeLabel}
+                    />
+                  ) : (
+                    <WeekGrid
+                      weekStartIso={range.start.toISOString()}
+                      todayIso={todayIso}
+                      entries={entries}
+                      dayHref={dayHref}
+                      rangeLabel={rangeLabel}
+                    />
+                  )}
+                </div>
+
+                <div className="p-[var(--app-panel-pad)] md:hidden">
+                  <AgendaList entries={entries} todayIso={todayIso} />
+                </div>
+              </>
+            )}
+
+            {entries.length > 0 && view === "day" && (
+              <div className="p-[var(--app-panel-pad)]">
+                <DayTimeline entries={entries} rangeLabel={rangeLabel} />
+              </div>
+            )}
+
+            {entries.length > 0 && view === "agenda" && (
+              <div className="p-[var(--app-panel-pad)]">
+                <AgendaList entries={entries} todayIso={todayIso} />
+              </div>
+            )}
+          </CardBody>
+
+          {/* Stated plainly rather than implied by a missing affordance. */}
+          <CardFooter>
+            <p className="max-w-[80ch] text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+              {calendarCopy.reschedulingUnavailable}
+            </p>
+          </CardFooter>
+        </Card>
+      </PageStack>
     </AppPage>
   );
 }
 
-/** `YYYY-MM` → the first instant of that month in UTC, or null if unparseable. */
+/**
+ * The range stepper's two arrows.
+ *
+ * Icon-only and 32px, so each carries the transparent 44px inset the theme
+ * prescribes. They are separated by the range label rather than sitting next to
+ * each other, which is also what keeps the two 44px targets from overlapping and
+ * stealing clicks from one another.
+ */
+function StepLink({
+  href,
+  label,
+  direction,
+}: {
+  href: string;
+  label: string;
+  direction: "previous" | "next";
+}) {
+  const Icon = direction === "previous" ? ChevronLeft : ChevronRight;
+
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      className={cn(
+        "relative flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]",
+        "border border-[var(--border-default)] bg-[var(--surface-primary)]",
+        "text-[color:var(--text-secondary)]",
+        "transition-colors duration-[var(--dur-instant)]",
+        "hover:border-[var(--border-strong)] hover:text-[color:var(--text-primary)]",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+        "after:absolute after:left-1/2 after:top-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']",
+      )}
+    >
+      <Icon aria-hidden="true" size={16} strokeWidth={2} />
+    </Link>
+  );
+}
+
+/**
+ * Month / Week / Day / Agenda.
+ *
+ * Links, not buttons: the view is a location, so it has to survive being copied
+ * out of the address bar and it has to be what the back button undoes.
+ * `aria-current="page"` reports the selection, and the selected item also gains a
+ * surface and a shadow, so it is not signalled by colour alone.
+ */
+function ViewSwitcher({
+  current,
+  anchorIso,
+  hrefFor,
+}: {
+  current: CalendarView;
+  anchorIso: string;
+  hrefFor: (view: CalendarView, date: string) => string;
+}) {
+  return (
+    <nav
+      aria-label={calendarCopy.viewSwitcherLabel}
+      className={cn(
+        "flex w-full items-center gap-0.5 rounded-[var(--radius-control)] p-0.5",
+        "bg-[var(--surface-muted)] sm:ml-auto sm:w-auto",
+      )}
+    >
+      {CALENDAR_VIEWS.map((option) => {
+        const selected = option.id === current;
+        return (
+          <Link
+            key={option.id}
+            href={hrefFor(option.id, anchorIso)}
+            aria-current={selected ? "page" : undefined}
+            className={cn(
+              "flex h-7 flex-1 items-center justify-center rounded-[var(--radius-chip)] px-[var(--space-3)]",
+              "text-[length:var(--text-app-meta)] whitespace-nowrap sm:flex-none",
+              "transition-colors duration-[var(--dur-instant)]",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+              selected
+                ? "bg-[var(--surface-primary)] font-[var(--weight-strong)] text-[color:var(--text-primary)] shadow-[var(--elevation-card)]"
+                : "text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]",
+            )}
+          >
+            {option.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ==========================================================================
+   RANGE MATHS
+
+   All UTC. The query bounds, the day keys the grids bucket by and the times on
+   screen are one frame of reference — see `calendarCopy.timezoneNote`.
+   ======================================================================== */
+
+/** `YYYY-MM-DD` → the first instant of that UTC day, or null if unparseable. */
+function parseDay(value: string | undefined): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12 || !day || day > 31) return null;
+  const parsed = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  // Rejects 31 February, which `Date.UTC` would roll forward into March —
+  // silently moving the user to a range they did not ask for.
+  return parsed.getUTCMonth() === month - 1 ? parsed : null;
+}
+
+/** `YYYY-MM` → the first instant of that month. Kept for pre-existing links. */
 function parseMonth(value: string | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}$/.test(value)) return null;
   const [year, month] = value.split("-").map(Number);
@@ -198,10 +473,85 @@ function parseMonth(value: string | undefined): Date | null {
   return new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
 }
 
-function startOfMonth(date: Date): Date {
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+}
+
+function startOfUtcMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 
-function monthLabel(date: Date): string {
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+/** Monday-first, matching the grids' column order. */
+function startOfUtcWeek(date: Date): Date {
+  const day = startOfUtcDay(date);
+  return addUtcDays(day, -((day.getUTCDay() + 6) % 7));
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
+}
+
+function addUtcMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Half-open, so a post at exactly midnight belongs to one range only. */
+function rangeFor(view: CalendarView, anchor: Date): { start: Date; end: Date } {
+  if (view === "week") {
+    const start = startOfUtcWeek(anchor);
+    return { start, end: addUtcDays(start, 7) };
+  }
+  if (view === "day") {
+    const start = startOfUtcDay(anchor);
+    return { start, end: addUtcDays(start, 1) };
+  }
+  const start = startOfUtcMonth(anchor);
+  return { start, end: addUtcMonths(start, 1) };
+}
+
+/** The next or previous anchor. Steps by whatever the view shows, never less. */
+function shift(view: CalendarView, anchor: Date, direction: 1 | -1): Date {
+  if (view === "week") return addUtcDays(startOfUtcWeek(anchor), 7 * direction);
+  if (view === "day") return addUtcDays(startOfUtcDay(anchor), direction);
+  // Normalised to the 1st: carrying the day of month over would make 31 January
+  // plus one month land in March.
+  return addUtcMonths(startOfUtcMonth(anchor), direction);
+}
+
+const monthYearFormat = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const fullDayFormat = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+const monthDayFormat = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+function labelFor(view: CalendarView, start: Date): string {
+  if (view === "day") return fullDayFormat.format(start);
+  if (view === "week") {
+    const end = addUtcDays(start, 6);
+    // The month is only repeated when the week actually crosses one.
+    const tail =
+      start.getUTCMonth() === end.getUTCMonth()
+        ? String(end.getUTCDate())
+        : monthDayFormat.format(end);
+    return `${monthDayFormat.format(start)} – ${tail}, ${end.getUTCFullYear()}`;
+  }
+  return monthYearFormat.format(start);
 }

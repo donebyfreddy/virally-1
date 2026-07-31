@@ -141,3 +141,165 @@ export const chartDashPatterns: Readonly<Record<(typeof chartSeries)[number], st
  * lightness band allows.
  */
 export const CHART_SERIES_MIN_CONTRAST = 3;
+
+/* ==========================================================================
+   THE AUTHENTICATED APP PALETTE
+
+   Mirrored from `styles/app-theme.css`, for the same reason the dark palette is
+   mirrored from `tokens.css`: so the values can be MEASURED in a test rather
+   than reviewed by eye. `appPalette.test.ts` asserts every hex here appears in
+   the CSS, so drift between the two fails the test run instead of shipping.
+
+   This exists as a second palette rather than as extra keys on the first because
+   the two are genuinely different systems with different contrast maths. A token
+   that passes on #07090d tells you nothing about #ffffff — the dark chart ramp
+   was tuned against a near-black panel and measures as low as 1.5:1 on white.
+   ========================================================================= */
+
+export const appPalette = {
+  "app-background": "#f4f7f8",
+  "surface-primary": "#ffffff",
+  "surface-secondary": "#f8fafb",
+  "surface-muted": "#f1f5f6",
+
+  "text-primary": "#17212b",
+  "text-secondary": "#48545f",
+  "text-muted": "#636f7d",
+  "text-on-brand": "#ffffff",
+
+  "brand-primary": "#0f766e",
+  "brand-primary-hover": "#0c6058",
+  "brand-primary-active": "#0a524b",
+  "brand-mark": "#0d9488",
+  "brand-soft": "#ddf5f1",
+  "brand-soft-border": "#a7ddd6",
+  "brand-ink": "#0f766e",
+
+  "accent-secondary": "#4f5fd7",
+
+  success: "#0c7a54",
+  "success-mark": "#16a06b",
+  "success-soft": "#e2f6ed",
+
+  warning: "#8a5a00",
+  "warning-mark": "#b8780a",
+  "warning-soft": "#fdf2df",
+
+  error: "#c02f3c",
+  "error-mark": "#d94452",
+  "error-soft": "#fceaec",
+
+  info: "#1d6fc4",
+  "info-mark": "#3d86e0",
+  "info-soft": "#edf4fd",
+
+  "border-subtle": "#eaeff1",
+  "border-default": "#dae2e5",
+  "border-strong": "#c3ced3",
+  "border-control": "#818f9a",
+
+  "focus-ring": "#0f766e",
+
+  /* The one dark surface. Same value as --text-primary by design — see the
+     MEDIA CANVAS block in app-theme.css. */
+  "media-canvas": "#17212b",
+  "text-on-media": "#ffffff",
+
+  "chart-1": "#0d9488",
+  "chart-2": "#2563eb",
+  "chart-3": "#7c3aed",
+  "chart-4": "#cf7005",
+} as const;
+
+export type AppPaletteToken = keyof typeof appPalette;
+
+/**
+ * The four light surfaces, lightest first.
+ *
+ * `surface-muted` is the darkest, so a foreground that clears its floor against
+ * that one clears it against all four. The contract below still states each
+ * pairing explicitly rather than relying on that shortcut, because the shortcut
+ * stops being true the moment someone adds a fifth surface.
+ */
+export const appSurfaces = [
+  "surface-primary",
+  "surface-secondary",
+  "app-background",
+  "surface-muted",
+] as const satisfies readonly AppPaletteToken[];
+
+/**
+ * Foregrounds that carry TEXT. Every one must clear 4.5:1 on every surface.
+ *
+ * Note what is absent: `--brand-mark` and each `--{state}-mark`. Those are the
+ * 3:1 graphical halves of their pairs and are never allowed to render text —
+ * that split is the whole reason the pairs exist, and this list is where the rule
+ * is enforced rather than merely documented.
+ */
+export const appTextTokens = [
+  "text-primary",
+  "text-secondary",
+  "text-muted",
+  "success",
+  "warning",
+  "error",
+  "info",
+  "brand-primary",
+  "brand-ink",
+  "accent-secondary",
+] as const satisfies readonly AppPaletteToken[];
+
+/**
+ * Foregrounds that are drawn, not read: chart strokes, progress fills, status
+ * dots, form-control borders. Held to the 3:1 graphical-object floor of WCAG
+ * 1.4.11.
+ */
+export const appGraphicalTokens = [
+  "brand-mark",
+  "success-mark",
+  "warning-mark",
+  "error-mark",
+  "info-mark",
+  "border-control",
+  "focus-ring",
+  "chart-1",
+  "chart-2",
+  "chart-3",
+  "chart-4",
+] as const satisfies readonly AppPaletteToken[];
+
+/**
+ * Pairings that do not involve a surface: text on a coloured fill.
+ *
+ * These are the ones a light-theme palette gets wrong most often, because the
+ * fill is chosen for how it looks as a block and the label is added afterwards.
+ */
+/**
+ * The media canvas is a surface, so its foregrounds need their own contract — the
+ * app-surface lists above are all light and say nothing about a dark well.
+ */
+export const appMediaContract: ReadonlyArray<{
+  foreground: AppPaletteToken;
+  floor: number;
+  note: string;
+}> = [
+  { foreground: "text-on-media", floor: 4.5, note: "Message and transport text on the canvas" },
+  { foreground: "brand-mark", floor: 3, note: "Decorative glyph on the canvas — graphical only" },
+];
+
+export const appOnColorContract: ReadonlyArray<{
+  foreground: AppPaletteToken;
+  background: AppPaletteToken;
+  note: string;
+}> = [
+  { foreground: "text-on-brand", background: "brand-primary", note: "Primary button label" },
+  { foreground: "text-on-brand", background: "brand-primary-hover", note: "Primary button, hover" },
+  { foreground: "text-on-brand", background: "brand-primary-active", note: "Primary button, active" },
+  { foreground: "text-on-brand", background: "error", note: "Notification count badge" },
+  { foreground: "brand-ink", background: "brand-soft", note: "Active rail item, soft chip" },
+  { foreground: "text-secondary", background: "brand-soft", note: "Secondary text on a soft chip" },
+  { foreground: "success", background: "success-soft", note: "Approved status chip" },
+  { foreground: "warning", background: "warning-soft", note: "Needs-review status chip" },
+  { foreground: "error", background: "error-soft", note: "Rejected status chip, error panel" },
+  { foreground: "info", background: "info-soft", note: "Informational chip" },
+];

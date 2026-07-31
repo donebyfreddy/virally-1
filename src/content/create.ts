@@ -8,13 +8,12 @@ import type { AspectRatio, GenerationMode, Platform } from "@/types/database";
  */
 
 export const createCopy = {
-  eyebrow: "CREATE",
   heading: "What do you want to create?",
   body: "Describe the campaign, or point Virally at a URL, a document or existing footage. Nothing is generated until you confirm — the default is to produce plans first.",
-  promptLabel: "Brief",
+  promptLabel: "Campaign brief",
   promptHint:
     "What it is about, who it is for, and what you want out of it. Specific beats clever.",
-  submitLabel: "Review the plan",
+  submitLabel: "Generate campaign plan",
   examplesLabel: "For example",
   examples: [
     "Create a 7-day campaign about why deep-sea animals glow. Target curious people aged 18–34. Create three hooks per concept. Produce Instagram Reels, TikTok videos and YouTube Shorts. Use a cinematic documentary style.",
@@ -169,11 +168,10 @@ export const TEMPLATES: readonly {
   },
 ];
 
-/** Right-hand plan summary rail. */
+/** Right-hand plan column. */
 export const planSummaryCopy = {
   heading: "Plan summary",
   intro: "Virally plans first, then generates. This is what the campaign will include.",
-  statusHeading: "Status",
   readyLabel: "Ready to plan",
   readyDetail: "No generation has started yet.",
   blockedLabel: "Not ready",
@@ -184,7 +182,7 @@ export const planSummaryCopy = {
 } as const;
 
 /**
- * Brief-panel copy.
+ * Brief and shape copy — the card titles and group labels of the left column.
  *
  * The reference design carries an "Auto / Recommended" format chip. It is not
  * implemented here: choosing formats automatically requires a real rule that
@@ -193,15 +191,23 @@ export const planSummaryCopy = {
  * worse than its absence, so the formats are chosen explicitly for now.
  */
 export const briefPanelCopy = {
-  heading: "Campaign brief",
+  heading: "Brief",
+  audienceHeading: "Audience and tone",
+  shapeHeading: "Output shape",
   attachLabel: "Attach brief",
   urlLabel: "Add URL",
   uploadLabel: "Upload file",
   enhanceLabel: "Enhance brief",
-  generateLabel: "Generate plan",
-  formatsHeading: "Format & channels",
-  templatesHeading: "Quick templates",
-  templatesHint: "Start from a proven structure. Templates set the shape — you write the brief.",
+  sourcesLabel: "Sources and tools",
+  /* Disabled controls need a stated reason, or they read as broken rather than
+     unbuilt. */
+  sourcesHint: "Not accepted yet. Describe the source in the brief for now.",
+  formatsHeading: "Formats",
+  channelsHeading: "Channels",
+  volumeHeading: "Volume and schedule",
+  includeHeading: "Include",
+  templatesHeading: "Start from a structure",
+  templatesHint: "Templates set the shape — you write the brief.",
   recentHeading: "Recent campaigns",
   recentHint: "Pick up where you left off.",
 } as const;
@@ -236,16 +242,16 @@ export const creditCopy = {
   estimateLabel: "This batch",
   afterLabel: "After reservation",
   reservedLabel: "Currently reserved",
-  reservedNoteTitle: "HELD, NOT SPENT",
+  reservedNoteTitle: "Held, not spent",
   reservedNote:
     "Reserved credits are held for work already running. Whatever the batch does not use is returned automatically.",
-  shortfallHeading: "NOT ENOUGH CREDITS",
+  shortfallHeading: "Not enough credits",
   shortfallBody:
     "Reduce the number of concepts, hooks or formats, choose a cheaper production mode, or run an earlier stage only.",
-  reservationNoteTitle: "HOW RESERVATION WORKS",
+  reservationNoteTitle: "How reservation works",
   reservationNote:
     "Credits are reserved before generation starts, so a batch cannot begin work it cannot finish. Unused credits are returned when it completes.",
-  unmeteredNoteTitle: "NOTHING WILL BE CHARGED",
+  unmeteredNoteTitle: "Nothing will be charged",
   unmeteredNote:
     "No generation provider is configured, so this batch runs against the deterministic mock and costs nothing. The figures below are what it would cost with a provider configured.",
 } as const;
@@ -259,7 +265,7 @@ export const costCopy = {
   stageHeading: "How far to go now",
   stageHint:
     "Plans first is the safe default. Each stage is a separate, retryable step — you can stop and review after any of them.",
-  confirmHeading: "CONFIRM THIS BATCH",
+  confirmHeading: "Confirm this batch",
   confirmCheckboxLabel: "I have reviewed the counts above and want to proceed",
 } as const;
 
@@ -270,6 +276,6 @@ export const costCopy = {
  * factual claim about provenance, not decoration.
  */
 export const demoNotice = {
-  title: "DEMO DATA",
+  title: "Demo data",
   body: "No AI provider key is configured, so a deterministic mock produced this. It is not a real generation and does not reflect what a configured provider would produce. Everything else — the plan, the counts, scheduling and publishing state — is real.",
 } as const;

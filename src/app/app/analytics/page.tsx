@@ -66,7 +66,7 @@ export default async function AnalyticsPage({
       <AppPage width="text">
         <AuthMessage
           tone="notice"
-          title="NOT AVAILABLE TO YOUR ROLE"
+          title="Not available to your role"
           body="Viewing analytics requires the analytics.view permission. An administrator can change this from the Team page."
         />
       </AppPage>
@@ -166,7 +166,6 @@ export default async function AnalyticsPage({
   return (
     <AppPage>
       <PageHeader
-        eyebrow={analyticsCopy.eyebrow}
         title={analyticsCopy.title}
         description={analyticsCopy.body}
         meta={[

@@ -2,14 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
-import { ChevronRight } from "lucide-react";
-import { AuthMessage } from "@/components/auth/AuthMessage";
+import { ChevronRight, Info, Lock } from "lucide-react";
 import { Composer } from "@/components/create/Composer";
-import { AppPage } from "@/components/app-ui/AppPage";
+import { AppPage, PageStack } from "@/components/app-ui/AppPage";
 import { PageHeader } from "@/components/app-ui/PageHeader";
-import { Panel } from "@/components/app-ui/Panel";
+import { Card, CardBody, CardHeader } from "@/components/app-ui/Card";
 import { Progress } from "@/components/app-ui/Progress";
-import { ErrorState } from "@/components/app-ui/States";
+import { EmptyState, ErrorState } from "@/components/app-ui/States";
 import { StatusChip } from "@/components/app-ui/StatusChip";
 import { briefPanelCopy, createCopy, demoNotice } from "@/content/create";
 import { readSession } from "@/lib/auth/session";
@@ -66,9 +65,9 @@ export default async function CreatePage({
   if (!can(context.role, "content.create")) {
     return (
       <AppPage width="text">
-        <AuthMessage
-          tone="notice"
-          title="NOT AVAILABLE TO YOUR ROLE"
+        <EmptyState
+          icon={<Lock size={20} strokeWidth={1.75} />}
+          title="Not available to your role"
           body="Creating content requires the content.create permission. Your role can review and analyse, but not author. An administrator can change this from the Team page."
         />
       </AppPage>
@@ -123,35 +122,53 @@ export default async function CreatePage({
 
   return (
     <AppPage>
-      <PageHeader
-        eyebrow={createCopy.eyebrow}
-        title={createCopy.heading}
-        description={createCopy.body}
-        meta={[
-          context.workspaceName,
-          context.brands.find((brand) => brand.id === context.brandId)?.name ?? "No brand",
-          accountCount === 1 ? "1 connected account" : `${accountCount} connected accounts`,
-        ]}
-      />
+      <PageStack>
+        <PageHeader
+          title={createCopy.heading}
+          description={createCopy.body}
+          meta={[
+            context.workspaceName,
+            context.brands.find((brand) => brand.id === context.brandId)?.name ?? "No brand",
+            accountCount === 1 ? "1 connected account" : `${accountCount} connected accounts`,
+          ]}
+        />
 
-      {errorCode && ERROR_COPY[errorCode] && (
-        <div className="mt-[var(--space-8)] max-w-[46rem]">
+        {errorCode && ERROR_COPY[errorCode] && (
           <ErrorState
-            title="COULD NOT CONTINUE"
+            className="max-w-[60ch]"
+            title="Could not continue"
             body={ERROR_COPY[errorCode]}
             reassurance="Nothing was generated and no credits were used."
           />
-        </div>
-      )}
+        )}
 
-      {/* Stated before the user spends anything, not after they see the output. */}
-      {isMockOnly() && (
-        <div className="mt-[var(--space-8)] max-w-[46rem]">
-          <AuthMessage tone="notice" title={demoNotice.title} body={demoNotice.body} />
-        </div>
-      )}
+        {/* Stated before the user spends anything, not after they see the
+            output. Info-toned rather than a warning: nothing is wrong, the
+            provenance of what comes out is simply different. */}
+        {isMockOnly() && (
+          <div
+            className={cn(
+              "flex max-w-[60ch] gap-[var(--space-3)] rounded-[var(--radius-card)]",
+              "border border-[var(--info-mark)] bg-[var(--info-soft)] p-[var(--app-panel-pad)]",
+            )}
+          >
+            <Info
+              aria-hidden="true"
+              size={16}
+              strokeWidth={2}
+              className="mt-0.5 shrink-0 text-[color:var(--info)]"
+            />
+            <div className="min-w-0">
+              <p className="text-[length:var(--text-app-cell)] font-[var(--weight-heading)] text-[color:var(--info)]">
+                {demoNotice.title}
+              </p>
+              <p className="mt-1 text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
+                {demoNotice.body}
+              </p>
+            </div>
+          </div>
+        )}
 
-      <div className="mt-[var(--space-8)]">
         <Composer
           onSubmit={createCampaign}
           accountCount={accountCount}
@@ -160,74 +177,87 @@ export default async function CreatePage({
           creditsReserved={balance.reserved}
           unmetered={unmetered}
         />
-      </div>
 
-      {/* Rendered only when there is something to resume. An empty "Recent
-          campaigns" panel on a first visit is a dead region that makes the page
-          look broken rather than new. */}
-      {recent.length > 0 && (
-        <Panel className="mt-[var(--space-8)]">
-          <div className="flex flex-wrap items-baseline justify-between gap-[var(--space-4)]">
-            <h2 className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-secondary)]">
-              {briefPanelCopy.recentHeading}
-            </h2>
-            <Link
-              href="/app/campaigns"
-              className="rounded-[var(--radius-sm)] font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)] transition-colors duration-[var(--dur-instant)] hover:text-[color:var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
-            >
-              View all
-            </Link>
-          </div>
-
-          <ul className="mt-[var(--space-4)] flex flex-col">
-            {recent.map((campaign) => (
-              <li key={campaign.id}>
+        {/* Rendered only when there is something to resume. An empty "Recent
+            campaigns" card on a first visit is a dead region that makes the page
+            look broken rather than new. */}
+        {recent.length > 0 && (
+          <Card as="section" aria-labelledby="recent-heading">
+            <CardHeader
+              id="recent-heading"
+              as="h2"
+              title={briefPanelCopy.recentHeading}
+              description={briefPanelCopy.recentHint}
+              divided
+              action={
                 <Link
-                  href={`/app/campaigns/${campaign.id}`}
+                  href="/app/campaigns"
                   className={cn(
-                    "group flex min-h-11 items-center gap-[var(--space-4)] rounded-[var(--radius-sm)]",
-                    "border-t border-[var(--color-border-hairline)] px-[var(--space-2)] py-[var(--space-3)]",
-                    "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-                    "hover:bg-[var(--color-surface-2)]",
-                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
+                    "rounded-[var(--radius-chip)] text-[length:var(--text-app-meta)]",
+                    "font-[var(--weight-strong)] text-[color:var(--brand-ink)]",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
                   )}
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[length:var(--text-app-cell)] text-[color:var(--color-text-primary)]">
-                      {campaign.name}
-                    </span>
-                    <span className="block font-utility text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
-                      Updated {relativeDay(campaign.updatedAt)}
-                    </span>
-                  </span>
-
-                  <StatusChip status={campaign.status} />
-
-                  {/* Progress is published-over-planned, both real counters
-                      maintained by the job workers. A campaign with no content
-                      yet has no ratio to show, so the bar is omitted rather than
-                      rendered at zero — which would read as stalled. */}
-                  {campaign.contentCount > 0 && (
-                    <span className="hidden w-[8rem] shrink-0 sm:block">
-                      <Progress
-                        percent={(campaign.publishedCount / campaign.contentCount) * 100}
-                        label={`${campaign.name} publishing progress`}
-                      />
-                    </span>
-                  )}
-
-                  <ChevronRight
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1.5}
-                    className="shrink-0 text-[color:var(--color-text-muted)] transition-transform duration-[var(--dur-instant)] ease-[var(--ease-cut)] motion-safe:group-hover:translate-x-0.5"
-                  />
+                  View all
                 </Link>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+              }
+            />
+
+            <CardBody pad="none">
+              <ul className="flex flex-col">
+                {recent.map((campaign) => (
+                  <li
+                    key={campaign.id}
+                    className="border-b border-[var(--border-subtle)] last:border-b-0"
+                  >
+                    <Link
+                      href={`/app/campaigns/${campaign.id}`}
+                      className={cn(
+                        "group flex min-h-11 items-center gap-[var(--space-4)]",
+                        "px-[var(--app-panel-pad)] py-[var(--space-3)]",
+                        "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
+                        "hover:bg-[var(--surface-secondary)]",
+                        "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+                      )}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
+                          {campaign.name}
+                        </span>
+                        <span className="block text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                          Updated {relativeDay(campaign.updatedAt)}
+                        </span>
+                      </span>
+
+                      <StatusChip status={campaign.status} />
+
+                      {/* Progress is published-over-planned, both real counters
+                          maintained by the job workers. A campaign with no content
+                          yet has no ratio to show, so the bar is omitted rather than
+                          rendered at zero — which would read as stalled. */}
+                      {campaign.contentCount > 0 && (
+                        <span className="hidden w-[8rem] shrink-0 sm:block">
+                          <Progress
+                            percent={(campaign.publishedCount / campaign.contentCount) * 100}
+                            label={`${campaign.name} publishing progress`}
+                          />
+                        </span>
+                      )}
+
+                      <ChevronRight
+                        aria-hidden="true"
+                        size={16}
+                        strokeWidth={1.5}
+                        className="shrink-0 text-[color:var(--text-muted)] transition-transform duration-[var(--dur-instant)] ease-[var(--ease-cut)] motion-safe:group-hover:translate-x-0.5"
+                      />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        )}
+      </PageStack>
     </AppPage>
   );
 }

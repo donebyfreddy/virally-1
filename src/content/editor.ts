@@ -21,12 +21,13 @@ export const INSPECTOR_TABS = [
 export type InspectorTabId = (typeof INSPECTOR_TABS)[number]["id"];
 
 export const editorCopy = {
-  eyebrow: "EDITOR",
-
   assetsHeading: "Assets",
   timelineHeading: "Timeline",
   inspectorHeading: "Inspector",
-  segmentListLabel: "View segments as a list",
+  previewHeading: "Preview",
+  segmentListLabel: "Read segments as a list",
+
+  backToContent: "All content",
 
   paneSwitcherLabel: "Editor panel",
   paneLabels: {
@@ -34,6 +35,8 @@ export const editorCopy = {
     preview: "Preview",
     inspector: "Inspector",
   },
+
+  variantSwitcherLabel: "Platform variant",
 
   trackLabels: {
     script: "Script",
@@ -45,8 +48,10 @@ export const editorCopy = {
   fullscreenLabel: "Fullscreen",
   approveLabel: "Approve",
   ctaLabel: "Call to action",
+  demoLabel: "Demo output",
 
-  savedRevision: (revision: number) => `REVISION ${revision} · SAVED`,
+  /** Sentence case: this sits in a control strip, not in a table header. */
+  savedRevision: (revision: number) => `Revision ${revision} · saved`,
 
   captionOverridden: "This variant overrides the item caption",
 
@@ -88,3 +93,11 @@ export const editorCopy = {
       "Per-platform export settings — bitrate, container, caption burn-in and safe-area padding. These are applied by the render job.",
   } satisfies Record<InspectorTabId, string>,
 } as const;
+
+/** Script-segment roles, as the inspector and timeline name them. */
+export const SEGMENT_ROLE_LABELS: Readonly<Record<string, string>> = {
+  hook: "Hook",
+  body: "Body",
+  cta: "Call to action",
+  outro: "Outro",
+};

@@ -48,7 +48,7 @@ export default async function UsagePage() {
       <AppPage width="text">
         <AuthMessage
           tone="notice"
-          title="NOT AVAILABLE TO YOUR ROLE"
+          title="Not available to your role"
           body="Viewing usage and spend requires the billing.view permission. Your role can create and review content, but not see billing. An administrator can change this from the Team page."
         />
       </AppPage>
@@ -68,7 +68,6 @@ export default async function UsagePage() {
   return (
     <AppPage>
       <PageHeader
-        eyebrow={usageCopy.eyebrow}
         title={usageCopy.heading}
         description={usageCopy.body}
         meta={[

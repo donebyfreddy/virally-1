@@ -209,7 +209,6 @@ export default async function LibraryPage({
   return (
     <AppPage>
       <PageHeader
-        eyebrow={libraryCopy.eyebrow}
         title={libraryCopy.title}
         description={libraryCopy.body}
         meta={[

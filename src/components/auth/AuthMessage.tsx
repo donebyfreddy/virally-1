@@ -60,8 +60,15 @@ export function AuthMessage({
       <div className="flex flex-col gap-2">
         {title && (
           <p
+            // Case comes from a token, not a literal `uppercase`, for the same
+            // reason the button's does: this component is shared between the dark
+            // auth screens — where an uppercase status line is the right register —
+            // and ten screens inside the light product, where it shouts. With the
+            // class hard-coded, sentence-case copy still rendered in caps, so
+            // callers in the app were abandoning the component rather than using it.
             className={cn(
-              "font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)]",
+              "font-utility text-[length:var(--message-title-text)]",
+              "[text-transform:var(--message-title-case)] tracking-[var(--message-title-tracking)]",
               config.text,
             )}
           >

@@ -130,7 +130,7 @@ export function TimeSeriesChart({
               textAnchor="end"
               dominantBaseline="middle"
               fill="var(--chart-axis)"
-              className="font-utility"
+              className="app-figure"
               fontSize="11"
             >
               {formatValue(tick)}
@@ -161,7 +161,7 @@ export function TimeSeriesChart({
               y1={PADDING.top}
               x2={scale.x(activeX)}
               y2={VIEW.height - PADDING.bottom}
-              stroke="var(--color-border)"
+              stroke="var(--border-strong)"
               strokeWidth="1"
             />
           )}
@@ -178,7 +178,7 @@ export function TimeSeriesChart({
                   r="4"
                   fill={seriesColorVar(index)}
                   // A surface-coloured ring separates overlapping markers.
-                  stroke="var(--color-surface-1)"
+                  stroke="var(--surface-primary)"
                   strokeWidth="2"
                 />
               );
@@ -192,14 +192,17 @@ export function TimeSeriesChart({
             aria-hidden="true"
             className={cn(
               "pointer-events-none absolute top-0 z-[var(--z-raised)] min-w-[10rem] -translate-x-1/2",
-              "rounded-[var(--radius-sm)] border border-[var(--color-border)]",
-              "bg-[var(--color-surface-2)] p-[var(--space-3)] shadow-[var(--shadow-raised)]",
+              "rounded-[var(--radius-control)] border border-[var(--border-default)]",
+              // White on white, separated by elevation rather than by a darker
+              // fill: a tooltip tinted away from the panel it floats over reads as
+              // a different kind of object than the card it belongs to.
+              "bg-[var(--surface-primary)] p-[var(--space-3)] shadow-[var(--elevation-overlay)]",
             )}
             style={{
               left: `${(scale.x(activeX) / VIEW.width) * 100}%`,
             }}
           >
-            <p className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
+            <p className="text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-muted)]">
               {formatX(activeX)}
             </p>
             <dl className="mt-[var(--space-2)] flex flex-col gap-[var(--space-1)]">
@@ -208,7 +211,7 @@ export function TimeSeriesChart({
                 if (!point) return null;
                 return (
                   <div key={item.id} className="flex items-center justify-between gap-[var(--space-3)]">
-                    <dt className="flex items-center gap-[var(--space-2)] text-[length:var(--text-utility-xs)] text-[color:var(--color-text-secondary)]">
+                    <dt className="flex items-center gap-[var(--space-2)] text-[length:var(--text-app-label)] text-[color:var(--text-secondary)]">
                       <span
                         aria-hidden="true"
                         className="size-2 shrink-0 rounded-full"
@@ -216,7 +219,7 @@ export function TimeSeriesChart({
                       />
                       {item.label}
                     </dt>
-                    <dd className="font-utility text-[length:var(--text-app-meta)] tabular-nums text-[color:var(--color-text-primary)]">
+                    <dd className="app-figure text-[length:var(--text-app-meta)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
                       {formatValue(point.y)}
                     </dd>
                   </div>

@@ -40,3 +40,8 @@ yarn-error.log*
 
 # analysis
 .next/analyze/
+
+# TypeScript incremental build cache. Tracking it produces phantom type
+# errors when the snapshot disagrees with the working tree.
+tsconfig.tsbuildinfo
+*.tsbuildinfo

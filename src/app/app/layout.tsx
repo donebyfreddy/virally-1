@@ -9,6 +9,8 @@ import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { db } from "@/lib/db";
 import { notifications } from "@/lib/db/schema.fragment";
+import { readBalance } from "@/lib/creative/credits";
+import { tenantScope } from "@/lib/creative/scope";
 
 /**
  * Never prerender an authenticated surface.
@@ -49,7 +51,7 @@ export default async function ProductLayout({
       <Standalone>
         <AuthMessage
           tone="error"
-          title="WORKSPACE COULD NOT BE LOADED"
+          title="Workspace could not be loaded"
           body="Your account is signed in, but the workspace behind it could not be read. Nothing has been changed. Reload to retry — if this persists the database is unreachable."
         />
       </Standalone>
@@ -60,32 +62,57 @@ export default async function ProductLayout({
     redirect("/onboarding");
   }
 
-  // The unread count is one cheap aggregate rather than a subscription: the shell
-  // renders on every navigation, so a count query is the right cost. The
-  // realtime notification centre replaces this with a subscription in Phase 11.
-  const [{ value: unreadCount }] = await db
-    .select({ value: count() })
-    .from(notifications)
-    .where(and(eq(notifications.userId, resolution.context.user.id), isNull(notifications.readAt)));
+  // Two cheap aggregates rather than subscriptions: the shell renders on every
+  // navigation, so count queries are the right cost. Run concurrently because
+  // neither depends on the other — sequentially they would add both round trips
+  // to every page load in the product.
+  //
+  // The credit balance is here rather than on each page because the top bar shows
+  // it everywhere: every generation action spends credits, so "can I afford this?"
+  // must be answerable without navigating to Usage.
+  const [[unread], balance] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(notifications)
+      .where(
+        and(eq(notifications.userId, resolution.context.user.id), isNull(notifications.readAt)),
+      ),
+    readBalance(
+      tenantScope(resolution.context.organizationId, resolution.context.workspaceId),
+    ),
+  ]);
 
   return (
-    <AppShell context={resolution.context} unreadNotifications={unreadCount}>
+    <AppShell
+      context={resolution.context}
+      unreadNotifications={unread?.value ?? 0}
+      creditsAvailable={balance.available}
+      creditsReserved={balance.reserved}
+    >
       {children}
     </AppShell>
   );
 }
 
-/** Layout for the states that render without a shell, since there is no tenant. */
+/**
+ * Layout for the states that render without a shell, since there is no tenant.
+ *
+ * Carries `theme-app` even though it has no sidebar or top bar. These are product
+ * screens — the user is signed in and something went wrong behind the shell — so
+ * rendering them on the marketing site's near-black canvas would flip the whole
+ * page to a different design system at exactly the moment the user is trying to
+ * work out whether the product is broken.
+ */
 function Standalone({ children }: { children: React.ReactNode }) {
   return (
-    <>
+    <div className="theme-app min-h-dvh">
       <SkipLink />
       <main
         id="main"
-        className="mx-auto flex min-h-dvh max-w-[var(--container-text)] flex-col justify-center px-[var(--gutter)] py-24"
+        className="mx-auto flex min-h-dvh max-w-[var(--container-text)] flex-col justify-center px-[var(--app-gutter)] py-24"
       >
         {children}
       </main>
-    </>
+    </div>
   );
 }

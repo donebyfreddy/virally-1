@@ -51,7 +51,7 @@ export function CategoryBars({
         const share = ceiling > 0 ? Math.max(0, Math.min(1, datum.value / ceiling)) : 0;
         return (
           <div key={datum.id} className="grid grid-cols-[minmax(6rem,9rem)_1fr_auto] items-center gap-[var(--space-3)]">
-            <dt className="min-w-0 truncate text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
+            <dt className="min-w-0 truncate text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]">
               {datum.label}
             </dt>
 
@@ -59,7 +59,7 @@ export function CategoryBars({
                 short bar is ambiguous between a small value and a narrow chart. */}
             <div
               aria-hidden="true"
-              className="h-2 min-w-0 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--chart-track)]"
+              className="h-2 min-w-0 overflow-hidden rounded-[var(--radius-full)] bg-[var(--chart-track)]"
             >
               <div
                 className={cn(
@@ -71,11 +71,11 @@ export function CategoryBars({
             </div>
 
             <dd className="shrink-0 text-right">
-              <span className="block font-utility text-[length:var(--text-app-cell)] tabular-nums text-[color:var(--color-text-primary)]">
+              <span className="app-figure block text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
                 {formatValue(datum.value)}
               </span>
               {datum.detail && (
-                <span className="block font-utility text-[length:var(--text-utility-xs)] tabular-nums text-[color:var(--color-text-muted)]">
+                <span className="app-figure block text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
                   {datum.detail}
                 </span>
               )}
@@ -137,10 +137,10 @@ export function Sparkline({
         fill="none"
         stroke={
           favourable === undefined
-            ? "var(--color-text-muted)"
+            ? "var(--text-muted)"
             : favourable
               ? "var(--color-success)"
-              : "var(--color-text-secondary)"
+              : "var(--text-secondary)"
         }
         strokeWidth="1.5"
         strokeLinecap="round"

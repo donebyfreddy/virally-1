@@ -37,17 +37,15 @@ export function Metric({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-[var(--space-1)]", className)}>
-      <dt className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
-        {label}
-      </dt>
+    <div className={cn("flex min-w-0 flex-col", className)}>
+      <dt className="app-label truncate">{label}</dt>
 
-      <dd className="flex items-baseline gap-[var(--space-2)]">
-        {/* Tabular figures so a column of numbers aligns and animated values
-            do not jitter as digit widths change. */}
+      <dd className="mt-1 flex items-baseline gap-[var(--space-2)]">
+        {/* Tabular figures so a column of numbers aligns and animated values do
+            not jitter as digit widths change. */}
         <span
           className={cn(
-            "font-utility tabular-nums text-[color:var(--color-text-primary)]",
+            "app-figure font-[var(--weight-heading)] text-[color:var(--text-primary)]",
             sizeClasses[size],
           )}
         >
@@ -57,7 +55,7 @@ export function Metric({
       </dd>
 
       {explains && (
-        <p className="text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+        <p className="mt-1 text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
           {explains}
         </p>
       )}
@@ -84,7 +82,7 @@ export function MetricRow({
   return (
     <dl
       className={cn(
-        "grid gap-x-[var(--space-8)] gap-y-[var(--space-6)] sm:grid-cols-2",
+        "grid gap-x-[var(--space-6)] gap-y-[var(--space-5)] sm:grid-cols-2",
         columns === 2 && "lg:grid-cols-2",
         columns === 3 && "lg:grid-cols-3",
         columns === 4 && "lg:grid-cols-4",
@@ -118,7 +116,7 @@ export function Delta({
     return (
       <span
         className={cn(
-          "font-utility text-[length:var(--text-utility-xs)] tabular-nums text-[color:var(--color-text-muted)]",
+          "app-figure text-[length:var(--text-app-label)] text-[color:var(--text-muted)]",
           className,
         )}
       >
@@ -134,10 +132,11 @@ export function Delta({
   return (
     <span
       className={cn(
-        "font-utility text-[length:var(--text-utility-xs)] tabular-nums",
-        favourable
-          ? "text-[color:var(--color-success)]"
-          : "text-[color:var(--color-text-secondary)]",
+        "app-figure text-[length:var(--text-app-label)] font-[var(--weight-strong)]",
+        // A regression is stated in muted text rather than in red. Red is reserved
+        // for something that failed; a metric being down is information, not an
+        // error, and a dashboard of red deltas trains the user to ignore red.
+        favourable ? "text-[color:var(--success)]" : "text-[color:var(--text-secondary)]",
         className,
       )}
     >

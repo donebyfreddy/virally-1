@@ -73,7 +73,6 @@ export default async function ExperimentsPage() {
   return (
     <AppPage>
       <PageHeader
-        eyebrow={experimentsCopy.eyebrow}
         title={experimentsCopy.title}
         description={experimentsCopy.body}
         meta={[

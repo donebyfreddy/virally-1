@@ -190,7 +190,6 @@ export default async function CampaignDetailPage({
   return (
     <AppPage>
       <PageHeader
-        eyebrow={campaignDetailCopy.eyebrow}
         title={campaign.name}
         meta={[
           ...(goalLabel ? [goalLabel] : []),

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export type SwitcherOption = {
@@ -29,12 +30,18 @@ export function Switcher({
   activeId,
   onSelect,
   emptyHint,
+  /**
+   * Leading glyph. Two adjacent switchers showing two proper nouns are otherwise
+   * indistinguishable now that the trigger no longer carries a visible caption.
+   */
+  icon,
 }: {
   label: string;
   options: readonly SwitcherOption[];
   activeId: string | null;
   onSelect: (id: string) => Promise<void>;
   emptyHint: string;
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
@@ -132,46 +139,66 @@ export function Switcher({
 
   if (options.length === 0) {
     return (
-      <div className="flex flex-col gap-0.5">
-        <span className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
-          {label}
-        </span>
-        <span className="text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-          {emptyHint}
-        </span>
-      </div>
+      <span className="text-[length:var(--text-app-meta)] text-[color:var(--text-muted)]">
+        {emptyHint}
+      </span>
     );
   }
 
   return (
     <div ref={containerRef} className="relative" onKeyDown={onKeyDown}>
+      {/*
+        A single 32px line, not a two-line block.
+
+        The previous trigger stacked an uppercase "WORKSPACE" caption above the
+        value, which made two selectors the tallest and loudest objects in the
+        chrome. The label is now the control's accessible name and its tooltip
+        instead — carried by `aria-label`, so assistive technology still gets it —
+        and the leading icon is what distinguishes workspace from brand visually.
+      */}
       <button
         ref={triggerRef}
         type="button"
-        aria-haspopup="listbox"
+        // `role="combobox"` rather than the implicit button role. This is the
+        // ARIA 1.2 select-only combobox: `aria-activedescendant` is defined on
+        // combobox and NOT on button, so without the role the virtual cursor
+        // below is an attribute the platform is entitled to ignore.
+        role="combobox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        // On the trigger, not on the `<ul>`. Focus never leaves this button while
+        // the list is open — the arrow keys move a virtual cursor — and
+        // `aria-activedescendant` is only honoured on the element that actually
+        // holds DOM focus. Declaring it on the list is the common version of this
+        // bug and silently announces nothing.
+        aria-activedescendant={open ? `${listId}-${focusIndex}` : undefined}
         aria-busy={pending || undefined}
+        aria-label={`${label}: ${active?.label ?? emptyHint}`}
+        title={label}
         onClick={() => (open ? close({ restoreFocus: false }) : openList())}
         className={cn(
-          "flex min-h-11 max-w-[14rem] items-center gap-2 rounded-[var(--radius-sm)] px-3",
-          "border border-[var(--color-border-hairline)] bg-[var(--color-surface-1)]",
-          "text-left transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-          "hover:border-[var(--color-border)]",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
+          "relative flex h-8 max-w-[11rem] items-center gap-[var(--space-2)] px-[var(--space-2)]",
+          "rounded-[var(--radius-control)] text-left",
+          "text-[length:var(--text-app-meta)] font-[var(--weight-strong)] text-[color:var(--text-secondary)]",
+          "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
+          "hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+          open && "bg-[var(--surface-muted)] text-[color:var(--text-primary)]",
+          "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
         )}
       >
-        <span className="flex min-w-0 flex-col">
-          <span className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
-            {label}
+        {icon && (
+          <span aria-hidden="true" className="shrink-0 text-[color:var(--text-muted)]">
+            {icon}
           </span>
-          <span className="truncate text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-            {active?.label ?? emptyHint}
-          </span>
-        </span>
-        <span aria-hidden="true" className="ml-auto text-[color:var(--color-text-muted)]">
-          {pending ? "…" : "▾"}
-        </span>
+        )}
+        <span className="truncate">{active?.label ?? emptyHint}</span>
+        <ChevronsUpDown
+          aria-hidden="true"
+          size={13}
+          strokeWidth={1.75}
+          className={cn("ml-auto shrink-0 text-[color:var(--text-muted)]", pending && "opacity-40")}
+        />
       </button>
 
       {open && (
@@ -179,13 +206,15 @@ export function Switcher({
           id={listId}
           role="listbox"
           aria-label={label}
-          aria-activedescendant={`${listId}-${focusIndex}`}
           className={cn(
-            "absolute left-0 top-[calc(100%+0.25rem)] z-[var(--z-overlay)] max-h-[60vh] w-[18rem]",
-            "overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--color-border)]",
-            "bg-[var(--color-surface-2)] p-1 shadow-[var(--shadow-panel)]",
+            "absolute right-0 top-[calc(100%+var(--space-2))] z-[var(--z-overlay)] max-h-[60vh] w-[17rem]",
+            "overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-default)]",
+            "bg-[var(--surface-primary)] p-[var(--space-1)] shadow-[var(--elevation-overlay)]",
           )}
         >
+          <li aria-hidden="true" className="app-label px-[var(--space-2)] py-[var(--space-2)]">
+            {label}
+          </li>
           {options.map((option, index) => {
             const selected = option.id === activeId;
             return (
@@ -197,23 +226,27 @@ export function Switcher({
                 onClick={() => commit(option.id)}
                 onMouseEnter={() => setFocusIndex(index)}
                 className={cn(
-                  "flex min-h-11 cursor-pointer flex-col justify-center rounded-[var(--radius-sm)] px-3 py-2",
-                  index === focusIndex && "bg-[var(--color-surface-3)]",
+                  "flex min-h-10 cursor-pointer items-center gap-[var(--space-2)] rounded-[var(--radius-control)] px-[var(--space-2)] py-[var(--space-2)]",
+                  index === focusIndex && "bg-[var(--surface-muted)]",
                 )}
               >
-                <span className="flex items-center gap-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                  {/* Checkmark, not just a background tint: selection must survive
-                      being unable to perceive the highlight colour. */}
-                  <span aria-hidden="true" className="w-3 font-utility text-[color:var(--color-action)]">
-                    {selected ? "✓" : ""}
-                  </span>
-                  <span className="truncate">{option.label}</span>
+                {/* A real checkmark, not just a background tint: selection must
+                    survive being unable to perceive the highlight colour. */}
+                <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
+                  {selected && (
+                    <Check size={14} strokeWidth={2.5} className="text-[color:var(--brand-primary)]" />
+                  )}
                 </span>
-                {option.detail && (
-                  <span className="pl-5 text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
-                    {option.detail}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
+                    {option.label}
                   </span>
-                )}
+                  {option.detail && (
+                    <span className="block truncate text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                      {option.detail}
+                    </span>
+                  )}
+                </span>
               </li>
             );
           })}

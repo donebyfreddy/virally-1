@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { readSession } from "@/lib/auth/session";
@@ -57,6 +56,10 @@ export async function generateMetadata({
  * variant selection. Splitting it that way keeps the queries on the server and
  * ships only the interaction code, rather than making the whole editor a client
  * component and pulling the data-fetching into it.
+ *
+ * No `PageHeader` and no breadcrumb of its own: the editor's command strip owns
+ * both, because on this surface the title, the review state and the campaign it
+ * belongs to are one control row rather than a page heading and a footer link.
  */
 export default async function ContentDetailPage({
   params,
@@ -195,17 +198,6 @@ export default async function ContentDetailPage({
         segments={segments}
         assets={assets}
       />
-
-      {item.campaignId && (
-        <p className="mt-[var(--space-6)] font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)]">
-          <Link
-            href={`/app/campaigns/${item.campaignId}`}
-            className="rounded-[var(--radius-sm)] text-[color:var(--color-text-muted)] transition-colors duration-[var(--dur-instant)] hover:text-[color:var(--color-text-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
-          >
-            ← Back to {item.campaignName ?? "campaign"}
-          </Link>
-        </p>
-      )}
     </AppPage>
   );
 }

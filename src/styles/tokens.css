@@ -61,6 +61,10 @@
   --space-2: 0.5rem;    /*   8 */
   --space-3: 0.75rem;   /*  12 */
   --space-4: 1rem;      /*  16 */
+  /* 20px. Added for the product layer only: 24px panel padding pushes the
+     sixth card of a KPI row off a 1440px viewport, and 16px reads as cramped
+     against a 12px card radius. Still on the 4px foundation. */
+  --space-5: 1.25rem;   /*  20 */
   --space-6: 1.5rem;    /*  24 */
   --space-8: 2rem;      /*  32 */
   --space-12: 3rem;     /*  48 */
@@ -121,6 +125,25 @@
   --border-width-hairline: 1px;
   --border-width-control: 1px;
   --border-width-active: 2px;
+
+  /* --------------------------------------------------------------------
+     BUTTON METRICS
+
+     Read by buttonStyles.ts. Declared as tokens because the marketing site
+     and the product need different button languages from one component —
+     44px uppercase here, 36px sentence case in `.theme-app`. See the
+     comment on `buttonBase`.
+     ------------------------------------------------------------------ */
+  --button-height: 2.75rem; /* 44 — the touch-target floor */
+  --button-case: uppercase;
+  --button-text: var(--text-utility);
+  --button-tracking: var(--tracking-utility);
+  --button-px: 1rem;
+
+  /* AuthMessage's title line, tokenised for the same reason. */
+  --message-title-case: uppercase;
+  --message-title-text: var(--text-utility);
+  --message-title-tracking: var(--tracking-utility);
 
   /* --------------------------------------------------------------------
      FOCUS — never overridden away

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, Lightbulb, Plus } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
 import type { MemberRole } from "@/types/database";
 import { cn } from "@/lib/cn";
 import { useLocalFlag } from "@/lib/hooks/useLocalFlag";
@@ -11,7 +11,7 @@ import {
   navItems,
   createAction,
   shellCopy,
-  supportCard,
+  navGroupLabels,
   type NavItem,
 } from "@/content/app-navigation";
 import { Wordmark } from "@/components/navigation/Wordmark";
@@ -22,20 +22,29 @@ const COLLAPSE_KEY = "virally:sidebar-collapsed";
 /**
  * Desktop sidebar.
  *
- * Collapse state is local to the browser (localStorage), not the database: it is a
- * per-device viewport preference, and round-tripping it through the server would
- * add a write on every toggle and still be wrong on a second monitor.
+ * Light, compact, and structured — the rail is chrome, not a landing surface.
+ * Three things changed from the first version, all of them about giving the
+ * content column back space it was spending on the rail:
  *
- * Read through `useSyncExternalStore`, which resolves the hydration problem without
- * a mount effect — see useLocalFlag.
+ *   - The create action moved to the TOP, directly under the wordmark. A
+ *     permanently-docked button at the bottom of a 12-item rail is a footer that
+ *     never scrolls away, and it read as the loudest thing on the page.
+ *   - The "need inspiration?" card is gone. Template discovery belongs in the
+ *     empty state of the surface it populates, where the user is already stuck,
+ *     not in the rail on every screen forever.
+ *   - The collapse toggle sits in the header row beside the wordmark rather than
+ *     owning a row of its own at the foot.
+ *
+ * Collapse state is local to the browser (localStorage), not the database: it is
+ * a per-device viewport preference, and round-tripping it through the server
+ * would add a write on every toggle and still be wrong on a second monitor.
+ *
+ * Read through `useSyncExternalStore`, which resolves the hydration problem
+ * without a mount effect — see useLocalFlag.
  */
 export function Sidebar({ role }: { role: MemberRole }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useLocalFlag(COLLAPSE_KEY, false);
-
-  function toggle() {
-    setCollapsed(!collapsed);
-  }
 
   const visible = navItems.filter((item) => !item.requires || can(role, item.requires));
   const operate = visible.filter((item) => item.group === "operate");
@@ -44,59 +53,80 @@ export function Sidebar({ role }: { role: MemberRole }) {
   return (
     <nav
       aria-label="Product"
-      // `transition-[width]` is the one place a non-transform property is animated:
-      // a sidebar that scales would distort its text, and the layout genuinely
-      // needs to reflow. It is a discrete user-initiated toggle, not a scroll
-      // effect, so it does not run on the compositor path that matters.
+      // `transition-[width]` is the one place a non-transform property is
+      // animated: a sidebar that scales would distort its text, and the layout
+      // genuinely needs to reflow. It is a discrete user-initiated toggle, not a
+      // scroll effect, so it does not run on the compositor path that matters.
       className={cn(
-        "sticky top-0 hidden h-dvh shrink-0 flex-col",
-        "border-r border-[var(--color-border-hairline)]",
-        "bg-[var(--color-surface-1)] lg:flex",
+        "sticky top-0 hidden h-dvh shrink-0 flex-col lg:flex",
+        "border-r border-[var(--border-default)] bg-[var(--surface-primary)]",
         "transition-[width] duration-[var(--dur-base)] ease-[var(--ease-cut)]",
         collapsed ? "w-[var(--app-rail-collapsed)]" : "w-[var(--app-rail)]",
       )}
     >
+      {/* Header. Matches the top bar's height and bottom border exactly, so the
+          wordmark and the page title sit on one baseline across the seam. */}
       <div
         className={cn(
-          "flex min-h-[var(--app-topbar-height)] items-center",
-          // Matches the top bar's height and bottom border exactly, so the
-          // wordmark and the breadcrumb sit on one baseline across the seam.
-          "border-b border-[var(--color-border-hairline)]",
-          collapsed ? "justify-center px-[var(--space-2)]" : "px-[var(--space-6)]",
+          "flex min-h-[var(--app-topbar-height)] items-center gap-[var(--space-2)]",
+          "border-b border-[var(--border-default)]",
+          collapsed ? "flex-col justify-center py-[var(--space-2)]" : "px-[var(--space-3)]",
         )}
       >
         <Link
           href="/app"
-          className="inline-flex min-h-11 items-center rounded-[var(--radius-sm)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
-        >
-          {collapsed ? (
-            <span aria-hidden="true" className="font-display text-[length:var(--text-title)]">
-              V
-            </span>
-          ) : (
-            <Wordmark />
+          className={cn(
+            "inline-flex items-center rounded-[var(--radius-control)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
           )}
+        >
+          {collapsed ? <BrandMark /> : <Wordmark />}
           <span className="sr-only">Virally — overview</span>
+        </Link>
+
+        {!collapsed && (
+          <CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed(true)} />
+        )}
+      </div>
+
+      {/* Create action. Compact — a 36px-tall button, not a 56px block. */}
+      <div className={cn("pt-[var(--space-3)]", collapsed ? "px-[var(--space-2)]" : "px-[var(--space-3)]")}>
+        <Link
+          href={createAction.href}
+          title={collapsed ? createAction.label : undefined}
+          className={cn(
+            "flex h-9 items-center justify-center gap-[var(--space-2)]",
+            "rounded-[var(--radius-control)]",
+            "bg-[var(--brand-primary)] text-[color:var(--text-on-brand)]",
+            "text-[length:var(--text-app-cell)] font-[var(--weight-strong)]",
+            "shadow-[var(--elevation-card)]",
+            "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
+            "hover:bg-[var(--brand-primary-hover)] active:bg-[var(--brand-primary-active)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+          )}
+        >
+          <Plus aria-hidden="true" size={15} strokeWidth={2.25} />
+          {!collapsed && <span>{createAction.label}</span>}
+          {collapsed && <span className="sr-only">{createAction.label}</span>}
         </Link>
       </div>
 
-      <div className="flex flex-1 flex-col gap-[var(--space-1)] overflow-y-auto px-[var(--space-2)] py-[var(--space-4)]">
+      <div
+        className={cn(
+          "flex flex-1 flex-col gap-px overflow-y-auto py-[var(--space-4)]",
+          collapsed ? "px-[var(--space-2)]" : "px-[var(--space-3)]",
+        )}
+      >
+        <GroupLabel collapsed={collapsed} first>
+          {navGroupLabels.operate}
+        </GroupLabel>
         {operate.map((item) => (
           <SidebarLink key={item.id} item={item} pathname={pathname} collapsed={collapsed} />
         ))}
 
         {manage.length > 0 && (
           <>
-            {/* A labelled group rather than a bare divider: the lower section is
-                workspace administration, and saying so costs one line. Collapsed,
-                there is no room for the label, so the rule carries it. */}
-            {collapsed ? (
-              <hr className="my-[var(--space-3)] border-0 border-t border-[var(--color-border-hairline)]" />
-            ) : (
-              <p className="mt-[var(--space-6)] px-[var(--space-3)] pb-[var(--space-2)] font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
-                {shellCopy.manageGroupLabel}
-              </p>
-            )}
+            <GroupLabel collapsed={collapsed}>{navGroupLabels.manage}</GroupLabel>
             {manage.map((item) => (
               <SidebarLink key={item.id} item={item} pathname={pathname} collapsed={collapsed} />
             ))}
@@ -104,92 +134,113 @@ export function Sidebar({ role }: { role: MemberRole }) {
         )}
       </div>
 
-      <div className="flex flex-col gap-[var(--space-2)] border-t border-[var(--color-border-hairline)] p-[var(--space-2)]">
-        <Link
-          href={createAction.href}
-          className={cn(
-            "flex min-h-11 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-sm)]",
-            "bg-[var(--color-action)] text-[color:var(--color-text-oncolor)]",
-            "font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)]",
-            "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-            "hover:bg-[var(--color-action-hover)] active:translate-y-px",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
-          )}
-        >
-          <Plus aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={2} />
-          {!collapsed && <span>{createAction.label}</span>}
-          <span className="sr-only">Create a campaign</span>
-        </Link>
-
-        {/* Support card. Hidden when collapsed rather than reduced to an icon —
-            a prompt to explore templates is not urgent enough to earn a glyph
-            the user would have to hover to understand. */}
-        {!collapsed && (
-          <Link
-            href={supportCard.href}
-            className={cn(
-              "group flex items-start gap-[var(--space-3)] rounded-[var(--radius-sm)]",
-              "border border-[var(--color-border-hairline)] bg-[var(--color-surface-2)]",
-              "p-[var(--space-3)]",
-              "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-              "hover:border-[var(--color-border)]",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
-            )}
-          >
-            <Lightbulb
-              aria-hidden="true"
-              size={NAV_ICON_SIZE}
-              strokeWidth={NAV_ICON_STROKE}
-              className="mt-0.5 shrink-0 text-[color:var(--color-text-muted)]"
-            />
-            <span className="min-w-0">
-              <span className="block text-[length:var(--text-app-meta)] text-[color:var(--color-text-secondary)]">
-                {supportCard.title}
-              </span>
-              <span className="mt-0.5 flex items-center gap-[var(--space-1)] text-[length:var(--text-app-meta)] text-[color:var(--color-text-primary)]">
-                {supportCard.action}
-                <ChevronRight
-                  aria-hidden="true"
-                  size={12}
-                  strokeWidth={NAV_ICON_STROKE}
-                  className="transition-transform duration-[var(--dur-instant)] ease-[var(--ease-cut)] motion-safe:group-hover:translate-x-0.5"
-                />
-              </span>
-            </span>
-          </Link>
-        )}
-
-        <button
-          type="button"
-          onClick={toggle}
-          aria-pressed={collapsed}
-          className={cn(
-            "flex w-full min-h-11 items-center gap-[var(--space-2)] rounded-[var(--radius-sm)] px-[var(--space-3)]",
-            "font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)]",
-            "text-[color:var(--color-text-muted)]",
-            "transition-colors duration-[var(--dur-instant)]",
-            "hover:text-[color:var(--color-text-primary)]",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          {collapsed ? (
-            <ChevronRight aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          ) : (
-            <ChevronLeft aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
-          )}
-          {!collapsed && <span>{shellCopy.collapseLabel}</span>}
-          {collapsed && <span className="sr-only">{shellCopy.expandLabel}</span>}
-        </button>
-      </div>
+      {/* Collapsed state has no room for a label beside the wordmark, so the
+          expand control lives at the foot instead. */}
+      {collapsed && (
+        <div className="flex justify-center border-t border-[var(--border-default)] p-[var(--space-2)]">
+          <CollapseToggle collapsed={collapsed} onToggle={() => setCollapsed(false)} />
+        </div>
+      )}
     </nav>
   );
 }
 
 /**
- * `aria-current="page"` rather than colour alone marks the active route — the
- * amber rule, the raised surface and the icon tint carry it visually, and the
- * attribute carries it for assistive technology.
+ * The collapsed-rail brand mark.
+ *
+ * A teal tile rather than a bare letter: at 4rem wide the rail has nothing else
+ * to anchor the eye, and an unboxed "V" reads as a stray character.
+ */
+function BrandMark() {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex size-8 items-center justify-center rounded-[var(--radius-control)]",
+        "bg-[var(--brand-primary)] text-[color:var(--text-on-brand)]",
+        "text-[0.9375rem] font-[var(--weight-heading)]",
+      )}
+    >
+      V
+    </span>
+  );
+}
+
+function CollapseToggle({
+  collapsed,
+  onToggle,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const label = collapsed ? shellCopy.expandLabel : shellCopy.collapseLabel;
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={collapsed}
+      title={label}
+      className={cn(
+        // 32px visually, with the touch target extended by a transparent inset
+        // pseudo-element rather than by padding, so it does not push the
+        // wordmark off the header row. See the `after:` classes.
+        "relative ml-auto flex size-8 shrink-0 items-center justify-center",
+        "rounded-[var(--radius-control)] text-[color:var(--text-muted)]",
+        "transition-colors duration-[var(--dur-instant)]",
+        "hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+        "after:absolute after:left-1/2 after:top-1/2 after:size-11 after:-translate-x-1/2 after:-translate-y-1/2",
+      )}
+    >
+      <Icon aria-hidden="true" size={17} strokeWidth={NAV_ICON_STROKE} />
+      <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
+/**
+ * Group heading inside the rail.
+ *
+ * Collapsed, a text label has nowhere to go, so the group boundary degrades to a
+ * rule — which still says "these are different kinds of destination" without
+ * requiring a hover to read.
+ */
+function GroupLabel({
+  children,
+  collapsed,
+  first = false,
+}: {
+  children: string;
+  collapsed: boolean;
+  first?: boolean;
+}) {
+  if (collapsed) {
+    return first ? null : (
+      <hr className="mx-auto my-[var(--space-3)] w-6 border-0 border-t border-[var(--border-default)]" />
+    );
+  }
+
+  return (
+    <p
+      className={cn(
+        "app-label px-[var(--space-2)] pb-[var(--space-2)]",
+        !first && "pt-[var(--space-5)]",
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+/**
+ * A rail destination.
+ *
+ * The active state is carried by three channels, not one: a soft teal
+ * background, a teal icon, and a heavier label weight. Colour alone would fail
+ * for a user who cannot separate the mint wash from white, and
+ * `aria-current="page"` carries it for assistive technology regardless.
  */
 function SidebarLink({
   item,
@@ -201,7 +252,7 @@ function SidebarLink({
   collapsed: boolean;
 }) {
   // Exact match for the root, prefix match for everything else, so
-  // /app/campaigns/abc still highlights Campaigns without /app matching everything.
+  // /app/campaigns/abc still highlights Campaigns without /app matching all.
   const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
   const Icon = navIcons[item.id];
 
@@ -211,40 +262,35 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
-        "group relative flex min-h-11 items-center gap-[var(--space-3)] rounded-[var(--radius-sm)]",
-        "text-[length:var(--text-body-s)]",
+        "group relative flex items-center gap-[var(--space-3)]",
+        // 36px rows rather than 44px: twelve destinations at 44px is 528px of
+        // rail, which overflows a 13" laptop. The 44px touch-target floor is met
+        // by the transparent `after:` inset below, which the pointer and
+        // assistive tech both hit.
+        "h-9 rounded-[var(--radius-control)]",
+        "text-[length:var(--text-app-cell)]",
         "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
-        collapsed ? "justify-center px-0" : "px-[var(--space-3)]",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+        "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+        collapsed ? "justify-center px-0" : "px-[var(--space-2)]",
         active
-          ? "bg-[var(--color-surface-2)] text-[color:var(--color-text-primary)]"
-          : "text-[color:var(--color-text-secondary)] hover:bg-[var(--color-surface-2)] hover:text-[color:var(--color-text-primary)]",
+          ? "bg-[var(--brand-soft)] text-[color:var(--brand-ink)] font-[var(--weight-strong)]"
+          : "text-[color:var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
       )}
     >
-      {/* A 2px amber rule pinned to the leading edge, not a colour swap: the
-          active state stays legible without relying on hue. Absolutely
-          positioned so it does not consume layout width when collapsed. */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute left-0 h-4 w-0.5 rounded-r-[var(--radius-sm)]",
-          active ? "bg-[var(--color-action)]" : "bg-transparent",
-        )}
-      />
-
       <Icon
         aria-hidden="true"
         size={NAV_ICON_SIZE}
-        strokeWidth={NAV_ICON_STROKE}
+        strokeWidth={active ? 2 : NAV_ICON_STROKE}
         className={cn(
           "shrink-0 transition-colors duration-[var(--dur-instant)]",
           active
-            ? "text-[color:var(--color-action)]"
-            : "text-[color:var(--color-text-muted)] group-hover:text-[color:var(--color-text-secondary)]",
+            ? "text-[color:var(--brand-primary)]"
+            : "text-[color:var(--text-muted)] group-hover:text-[color:var(--text-secondary)]",
         )}
       />
 
-      {collapsed ? <span className="sr-only">{item.label}</span> : <span>{item.label}</span>}
+      {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
     </Link>
   );
 }

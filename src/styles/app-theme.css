@@ -1,0 +1,528 @@
+/* ============================================================================
+   VIRALLY — AUTHENTICATED APP THEME
+
+   The marketing site stays cinematic and dark. The product does not.
+
+   A marketing page persuades with negative space and a near-black stage. An
+   operations surface earns trust by showing a lot of true state at once, and it
+   is read for hours at a time — so the product runs on a bright canvas, white
+   surfaces, one teal accent, and roughly twice the information density.
+
+   ── How this file works ─────────────────────────────────────────────────────
+
+   Two blocks, in order:
+
+     1. CANONICAL TOKENS. The semantic names the app's own components read
+        (`--surface-primary`, `--text-secondary`, `--brand-primary`). These are
+        the real design system.
+
+     2. THE BRIDGE. Re-points the marketing site's `--color-*` names at the
+        canonical tokens above. Every pre-existing product component already
+        reads `--color-surface-1` / `--color-action` / `--font-display`, so the
+        bridge converts the whole authenticated surface to the light system in
+        one place instead of requiring a simultaneous rewrite of 40 files.
+
+        The bridge is not permanent scaffolding to be embarrassed about — it is
+        what makes the theme swappable at all. But new app code must read the
+        canonical names, never the `--color-*` aliases.
+
+   ── Contrast ────────────────────────────────────────────────────────────────
+
+   Every ratio below was computed with WCAG 2.1 relative luminance against the
+   specific surface named, not estimated from the hex. The four light surfaces
+   are:
+
+     --surface-primary    #ffffff   L 1.00000
+     --surface-secondary  #f8fafb   L 0.95288
+     --app-background     #f4f7f8   L 0.92525
+     --surface-muted      #f1f5f6   L 0.90671
+
+   `--surface-muted` is the darkest, so a token that clears 4.5:1 against it
+   clears 4.5:1 everywhere in the app. Ratios below are stated against white (the
+   best case) and muted (the worst case).
+
+   These are not decoration. `appPalette.test.ts` mirrors every value in this file
+   and asserts each floor with the repo's own WCAG implementation — including a
+   parity check that each hex here matches the TS mirror, so the two cannot drift.
+   The first pass at this palette was designed by hand arithmetic and three tokens
+   were wrong by two to twenty hundredths; all three looked fine.
+   ========================================================================= */
+
+.theme-app {
+  /* Native form controls, scrollbars and `<select>` popups follow this. Without
+     it the OS renders a dark scrollbar down a white page. */
+  color-scheme: light;
+
+  /* ==================================================================
+     1. CANONICAL TOKENS
+     ================================================================== */
+
+  /* ---- Surfaces ---------------------------------------------------
+     Four steps, and the ramp is deliberately shallow: on a light theme
+     the boundary between surfaces is carried by a border, not by a
+     luminance jump. Stacking high-contrast greys is what makes a light
+     dashboard look like a spreadsheet. */
+  --app-background: #f4f7f8;    /* the canvas behind every panel */
+  --surface-primary: #ffffff;   /* cards, tables, the default panel */
+  --surface-secondary: #f8fafb; /* a control or nested surface ON a card */
+  --surface-muted: #f1f5f6;     /* recessed wells, table header bands, tracks */
+
+  /* ---- Text ------------------------------------------------------
+     A three-step ramp with real separation — 16.2 / 7.8 / 5.1 on white.
+     A common failure on light themes is secondary and muted landing
+     within a ratio of each other, which reads as one washed-out grey. */
+  --text-primary: #17212b;   /* 16.29:1 white · 14.84:1 muted */
+  --text-secondary: #48545f; /*  7.75:1 white ·  7.06:1 muted */
+  --text-muted: #636f7d;     /*  5.12:1 white ·  4.67:1 muted */
+  --text-on-brand: #ffffff;  /*  5.47:1 on --brand-primary */
+
+  /* ---- Brand ------------------------------------------------------
+     One accent, split into two tokens because one hex cannot do both
+     jobs on a white page.
+
+     The bright aqua the brief asked for (#10b8aa) measures 2.48:1 on
+     white. That fails the 4.5:1 text floor AND the 3:1 graphical-object
+     floor, so as a button fill it cannot carry white text and as a chart
+     stroke it is invisible. Refined per the brief's own instruction to
+     check contrast first:
+
+       --brand-primary  solid fills that carry text  → 5.47:1 with white
+       --brand-mark     strokes, rails, fills, icons → 3.74:1, no text
+
+     Both sit in the same teal family, so the accent still reads as one
+     colour; only the luminance differs, and it differs because the
+     contrast duty differs. */
+  --brand-primary: #0f766e;        /* white text 5.47:1 */
+  --brand-primary-hover: #0c6058;
+  --brand-primary-active: #0a524b;
+  --brand-mark: #0d9488;           /* 3.74:1 on white — graphical only */
+  --brand-soft: #ddf5f1;           /* active nav wash, soft chips */
+  --brand-soft-border: #a7ddd6;
+  --brand-ink: #0f766e;            /* 4.80:1 on --brand-soft */
+
+  /* ---- Data-visualisation secondary ------------------------------
+     Used for a second series or a supporting accent, never for a
+     primary action. Teal is the only interactive colour in the app. */
+  --accent-secondary: #4f5fd7;     /* 5.86:1 white · 5.34:1 muted */
+
+  /* ---- Semantic ---------------------------------------------------
+     Each state is a PAIR, for the same reason the brand is:
+
+       --{state}        carries text        → >= 4.5:1 on every surface
+       --{state}-mark   dot, bar, icon, fill → >= 3:1
+       --{state}-soft   the chip background
+
+     Saturated greens, ambers and reds are all intrinsically light. A
+     single hex per state either fails as text or disappears as a mark,
+     which is how "accessible palettes" end up with unreadable badges. */
+  --success: #0c7a54;       /*  5.35:1 white ·  4.87:1 muted */
+  --success-mark: #16a06b;  /*  3.35:1 white ·  3.05:1 muted */
+  --success-soft: #e2f6ed;
+
+  --warning: #8a5a00;       /*  5.93:1 white ·  5.40:1 muted */
+  --warning-mark: #b8780a;  /*  3.67:1 white ·  3.34:1 muted */
+  --warning-soft: #fdf2df;
+
+  --error: #c02f3c;         /*  5.66:1 white ·  5.15:1 muted */
+  --error-mark: #d94452;    /*  4.29:1 white ·  3.91:1 muted — mark only,
+                               white text on it measures 4.29 and FAILS */
+  --error-soft: #fceaec;
+
+  --info: #1d6fc4;          /*  5.09:1 white ·  4.64:1 muted */
+  --info-mark: #3d86e0;     /*  3.69:1 white ·  3.37:1 muted */
+  /* Lightened from #e9f1fc, which put --info at 4.48:1 on its own chip — two
+     hundredths under the floor, and exactly the kind of miss that survives a
+     review done by eye rather than by measurement. */
+  --info-soft: #edf4fd;     /* --info measures 4.60:1 on this */
+
+  /* ---- Borders ----------------------------------------------------
+     Three tokens, because "border" is three different jobs with three
+     different contrast obligations:
+
+       subtle    a rule INSIDE a card                 decorative, no duty
+       default   the card's own boundary              decorative, no duty
+       control   an input, checkbox or radio edge     3:1 required (1.4.11)
+
+     Collapsing these is the standard light-theme accessibility bug: a
+     #dfe6e9 hairline measures 1.26:1, which is correct for a card seam
+     and illegal for a text field. */
+  --border-subtle: #eaeff1;  /* 1.14:1 — inside a card */
+  --border-default: #dae2e5; /* 1.35:1 — card and table boundary */
+  --border-strong: #c3ced3;  /* 1.60:1 — emphasised boundary */
+  --border-control: #818f9a; /* 3.32:1 on white — form control edges */
+
+  /* ---- Media canvas -----------------------------------------------
+     The ONE dark surface in the product, and it exists for a perceptual
+     reason rather than a stylistic one: video and stills are judged on
+     their own contrast and colour, and a light surround washes both out.
+     Editors are dark for the same reason cinema walls are.
+
+     Its value is deliberately identical to --text-primary. The system has
+     exactly one dark, and defining a second near-black that differs by a
+     few points would be a difference nobody can see and everybody has to
+     maintain. They are separate TOKENS because they have separate duties:
+     one is ink, one is a surface, and only one of them may be swapped for
+     a true black later.
+
+     Ratios measured against --media-canvas:
+       --text-on-media  #ffffff  16.29:1  message text, transport labels
+       --brand-mark     #0d9488   4.35:1  graphical only, clears 3:1
+       --text-secondary #48545f   2.10:1  MUST NOT be used on this surface
+     ------------------------------------------------------------------ */
+  --media-canvas: #17212b;
+  --text-on-media: #ffffff;
+  /* Chrome drawn ON the canvas — a transport bar edge, a track divider.
+     Alpha rather than a hex so it composites over video as well as over
+     the empty well. */
+  --border-media: rgb(255 255 255 / 0.14);
+
+  /* ---- Focus ------------------------------------------------------
+     Teal rather than the marketing site's amber, and never removed.
+     5.47:1 on white, 5.08:1 on the app canvas. */
+  --focus-ring: #0f766e;
+
+  /* ---- Elevation --------------------------------------------------
+     Restrained on purpose. On a light theme, separation comes from the
+     border; the shadow only says "this floats above the page". Heavy
+     drop shadows under every card are the single fastest way to make a
+     dashboard look like a 2016 template. */
+  --elevation-card: 0 1px 2px 0 rgb(23 33 43 / 0.04);
+  --elevation-raised:
+    0 1px 2px 0 rgb(23 33 43 / 0.05),
+    0 2px 8px -2px rgb(23 33 43 / 0.06);
+  --elevation-overlay:
+    0 1px 3px 0 rgb(23 33 43 / 0.06),
+    0 12px 32px -8px rgb(23 33 43 / 0.16);
+
+  /* ---- Radius -----------------------------------------------------
+     The marketing site runs two radii (4px / 16px). The product needs a
+     middle step: 16px on a 32px-tall chip reads as a pill, and 4px on a
+     card reads as a dialog box from a settings panel. */
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-chip: 6px;
+
+  /* ---- Layout skeleton -------------------------------------------
+     Compact. The previous shell spent 15rem on the rail and 4.5rem on
+     the top bar — 72px of vertical chrome before any content, on a
+     surface whose entire job is showing state. */
+  --app-rail: 14.5rem;
+  --app-rail-collapsed: 4rem; /* 64px — still clears the 44px target floor */
+  --app-topbar-height: 3.5rem;
+  --app-gutter: var(--space-6);
+  --app-panel-gap: var(--space-4);
+  /* 1536px. Wider than the marketing site's 1248px column: a dashboard is not a
+     reading measure, and an operational table has real columns to place. */
+  --app-content-max: 96rem;
+
+  /* ---- Panel padding ---------------------------------------------
+     Chosen by information density, not nesting depth. 20px is the
+     default because 24px on a six-card KPI row pushes the sixth card
+     off a 1440px viewport. */
+  --app-panel-pad: var(--space-5);
+  --app-panel-pad-tight: var(--space-4);
+  --app-panel-pad-loose: var(--space-6);
+
+  /* ---- Typography -------------------------------------------------
+     One family. The display face (Bricolage 800) does not appear in the
+     product at all: a 96px cinematic headline above a table is the
+     "landing-page typography inside operational screens" the brief
+     rules out, and it is the single biggest reason the old app read as
+     a prototype.
+
+     Utility labels also drop out of the mono face. Mono is honest for
+     timecodes and render IDs; applied to every label it produces the
+     developer-tool aesthetic instead of a premium product. Geist's
+     tabular figures do the alignment job the mono face was there for. */
+  --font-heading: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --weight-heading: 600;
+  --weight-strong: 500;
+
+  --text-page-title: clamp(1.75rem, 2.2vw, 2rem); /* 28 → 32 */
+  --text-section-title: 1.125rem;                 /* 18 */
+  --text-card-title: 0.9375rem;                   /* 15 */
+  --text-app-body: 0.9375rem;                     /* 15 — the reading size */
+  --text-app-cell: 0.875rem;                      /* 14 — table cells */
+  --text-app-meta: 0.8125rem;                     /* 13 — secondary metadata */
+  --text-app-label: 0.75rem;                      /* 12 — utility labels */
+  --text-app-label-xs: 0.6875rem;                 /* 11 — the floor */
+
+  /* Metric figures. A KPI row shows six numbers, not one hero number. */
+  --text-metric-l: 1.75rem;   /* 28 */
+  --text-metric: 1.375rem;    /* 22 */
+  --text-metric-s: 1.125rem;  /* 18 */
+
+  /* ---- Charts -----------------------------------------------------
+     Four series, all measured against #ffffff (the panel they are drawn
+     on), all clearing the 3:1 graphical floor, all in distinct hue
+     families. Series colour is assigned by INDEX, never by sentiment,
+     and series 1 is always the primary measure.
+
+     The stroke patterns stay mandatory. Series 1 (teal) and series 2
+     (blue) are the pair a deutan reader separates least well, and hue
+     alone should never be the only channel carrying series identity. */
+  --chart-1: #0d9488; /* 3.74:1 — primary measure */
+  --chart-2: #2563eb; /* 5.17:1 — comparison */
+  --chart-3: #7c3aed; /* 5.70:1 — third series */
+  /* Darkened from #d97706, which cleared 3:1 on white (3.19) but measured 2.90
+     against --surface-muted. A chart drawn on a muted card would have had one
+     series below the graphical-object floor. */
+  --chart-4: #cf7005; /* 3.52:1 white · 3.20:1 muted — fourth series */
+
+  --chart-fill-1: rgb(13 148 136 / 0.12);
+  --chart-fill-2: rgb(37 99 235 / 0.10);
+
+  /* Grid lines are decorative and deliberately far below 3:1 — a grid
+     that competes with the data is a worse chart. Axis LABELS carry text
+     duty and wear --text-muted. */
+  --chart-grid: rgb(23 33 43 / 0.07);
+  --chart-axis: var(--text-muted);
+  --chart-track: #eaeff1;
+
+  /* ==================================================================
+     2. THE BRIDGE
+
+     Marketing-site token names, re-pointed at the canonical tokens
+     above. Existing product components read these; new app components
+     must not.
+     ================================================================== */
+
+  --color-canvas: var(--app-background);
+  --color-surface-1: var(--surface-primary);
+  --color-surface-2: var(--surface-secondary);
+  --color-surface-3: var(--surface-muted);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-oncolor: var(--text-on-brand);
+
+  --color-border-hairline: var(--border-default);
+  --color-border: var(--border-control);
+  --color-border-strong: var(--border-strong);
+
+  /* Amber → teal. `--color-action` is the marketing site's "a human must
+     commit" accent and drives every primary button, so this one line is
+     what removes the yellow buttons from the product. */
+  --color-action: var(--brand-primary);
+  --color-action-hover: var(--brand-primary-hover);
+  --color-action-press: var(--brand-primary-active);
+  --color-focus: var(--focus-ring);
+
+  /* `--color-signal` is used as TEXT by existing components (the active
+     pipeline-stage label, for one), so it maps to the text-safe teal,
+     not to --brand-mark. A 3.74:1 stroke colour used as a 12px label is
+     exactly the substitution this pairing exists to prevent. */
+  --color-signal: var(--brand-primary);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
+
+  --color-action-wash: var(--brand-soft);
+  --color-signal-wash: var(--brand-soft);
+  --color-error-wash: var(--error-soft);
+  --color-scrim: rgb(23 33 43 / 0.44);
+
+  --app-panel: var(--surface-primary);
+  --app-panel-raised: var(--surface-secondary);
+  --app-panel-inset: var(--surface-muted);
+  --app-panel-wash: var(--surface-secondary);
+
+  --shadow-panel: var(--elevation-overlay);
+  --shadow-raised: var(--elevation-raised);
+
+  /* Chart series. `lib/accessibility/palette.ts` resolves a series index to
+     `var(--color-chart-N)`, so the canonical `--chart-N` values above have to be
+     reachable under that name too — otherwise every plot silently falls back to
+     the dark theme's ramp, which was tuned against #10151c and is unreadable on
+     white. */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+
+  /* `--radius-lg` is what Panel reads, `--radius-sm` is what every
+     control and the global focus ring read. */
+  --radius-lg: var(--radius-card);
+  --radius-sm: var(--radius-control);
+
+  /* Neutralises the cinematic type system inside the product.
+     `.font-display` keeps working as a class — it now resolves to Geist
+     600 at a normal tracking and line-height instead of Bricolage 800 at
+     -0.03em / 0.95. `.font-utility` keeps its tabular figures but stops
+     being monospace. */
+  --font-display: var(--font-heading);
+  --font-utility: var(--font-heading);
+  --weight-display: var(--weight-heading);
+
+  --tracking-display: -0.011em;
+  --tracking-utility: 0.02em;
+  --tracking-eyebrow: 0.06em;
+  --leading-display: 1.2;
+
+  /* Button metrics. 36px sentence-case controls instead of 44px uppercase ones.
+     A toolbar holding six 44px uppercase buttons is the single loudest thing on
+     an operations screen, and the product's screens hold a lot of them.
+
+     On target size: a 36px-tall text button clears WCAG 2.2 SC 2.5.8 Target Size
+     (Minimum, AA) at 24x24 comfortably, and its width is set by its label. The
+     controls that genuinely needed help are the icon-only ones — the 32px squares
+     in the top bar and rail — and each of those carries a transparent `after:`
+     inset that brings the hit area to 44x44 without changing the paint. Buttons
+     inside forms keep `size="lg"`, which is 48px outright.
+
+     The inset trick is deliberately NOT applied to text buttons: their targets
+     already pass, and a pseudo-element overhanging 4px on each side would steal
+     clicks from a control stacked directly above or below. */
+  --button-height: 2.25rem; /* 36 */
+  --button-case: none;
+  --button-text: var(--text-app-cell);
+  --button-tracking: 0em;
+  --button-px: 0.875rem;
+
+  /* AuthMessage titles. Sentence case at reading size — a status line inside the
+     product is a sentence, not a klaxon. */
+  --message-title-case: none;
+  --message-title-text: var(--text-app-cell);
+  --message-title-tracking: 0em;
+
+  /* ==================================================================
+     APPLIED STYLES
+
+     The token blocks above only declare values. These four properties
+     are what actually make the subtree light and dense.
+     ================================================================== */
+  background-color: var(--app-background);
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: var(--text-app-body);
+  line-height: 1.5;
+}
+
+/* The shell is `min-h-dvh`, so it covers the viewport — but rubber-band
+   overscroll on macOS and iOS reveals whatever is behind it. Without this the
+   user sees the marketing site's near-black body flash at the top of every
+   bounce. `:has()` is supported by every browser this app targets. */
+body:has(.theme-app) {
+  background-color: #f4f7f8;
+}
+
+/* ============================================================================
+   APP TYPOGRAPHIC ROLES
+
+   Scoped to `.theme-app` so they cannot leak into the marketing site.
+   ========================================================================= */
+
+/* Page `<h1>`. 28–32px, not 96px. */
+.theme-app .app-title {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: var(--text-page-title);
+  line-height: 1.15;
+  letter-spacing: -0.018em;
+}
+
+/* Section and card headings. */
+.theme-app .app-section-title {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: var(--text-section-title);
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+}
+
+.theme-app .app-card-title {
+  font-family: var(--font-heading);
+  font-weight: var(--weight-heading);
+  font-size: var(--text-card-title);
+  line-height: 1.35;
+  letter-spacing: -0.006em;
+}
+
+/* Compact utility label — the ONE place uppercase is still allowed, and at
+   0.06em rather than the marketing site's 0.16em. Reserved for column headers
+   and small section labels; never for a heading. */
+.theme-app .app-label {
+  font-weight: var(--weight-strong);
+  font-size: var(--text-app-label);
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Numerals. Tabular figures are mandatory: without them every column of
+   numbers misaligns and every animated metric jitters as digit widths change. */
+.theme-app .app-figure {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================================
+   APP MOTION
+
+   CSS keyframes rather than Framer Motion. framer-motion is deliberately absent
+   from the authenticated bundle — the root layout does not mount MotionProvider,
+   and the marketing page opts in on its own — so importing it to slide a drawer
+   would put ~34KB of JS on every product route to animate two transforms.
+
+   `transform` and `opacity` only, so all of these stay on the compositor.
+
+   Applied exclusively through Tailwind's `motion-safe:` variant, so under
+   `prefers-reduced-motion: reduce` the animation is never attached and the
+   element renders in its final state. That is why none of these may carry
+   information: the animation is genuinely optional. The global reduced-motion
+   floor in globals.css is the backstop.
+   ========================================================================= */
+
+/* Drawer, sliding in from the leading edge. Enter only — dismissal reads better
+   instant, and an exit transition would require presence tracking, which is the
+   thing that costs a JS animation library. */
+@keyframes virally-app-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Scrim behind the drawer, and any modal backdrop. */
+@keyframes virally-app-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Dropdowns, popovers and the command palette: a short rise, no scale. A
+   scaling panel blurs its own text mid-flight on a non-integer scale factor. */
+@keyframes virally-app-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* No `.animate-drawer-in`-style convenience classes here, deliberately.
+ *
+ * Tailwind only generates a variant for a utility it knows about, so
+ * `motion-safe:animate-drawer-in` against a hand-written CSS class emits nothing
+ * and leaves the literal string `motion-safe:animate-drawer-in` in the markup —
+ * which matches no selector, so the animation silently never runs AND the
+ * reduced-motion guard silently does not apply either.
+ *
+ * Callers therefore use Tailwind's arbitrary animation value, which is the
+ * pattern already established for `virally-stage-in` in globals.css:
+ *
+ *   motion-safe:animate-[virally-app-drawer-in_var(--dur-panel)_var(--ease-settle)_backwards]
+ */

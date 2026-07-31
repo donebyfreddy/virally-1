@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { Panel } from "@/components/app-ui/Panel";
+import { Card, CardBody, CardHeader } from "@/components/app-ui/Card";
 import { productionModeCopy } from "@/content/create";
 import type { ProductionModeDefinition } from "@/lib/creative/modes";
 import type { ProductionMode } from "@/lib/creative/types";
@@ -10,20 +10,19 @@ import type { ProductionMode } from "@/lib/creative/types";
 /**
  * The production-mode selector.
  *
- * Structurally its own surface, not a row of `ChoiceChip`s and not a generic
- * card grid: each option carries a price, a rationale and a composition list,
- * which is more than a chip can hold and is the information the choice actually
- * turns on. Cost per reel is the point of the control, so it is the largest
- * element in each option rather than a footnote.
+ * Structurally its own surface, not a row of chips and not a generic card grid:
+ * each option carries a price, a rationale and a composition list, which is more
+ * than a chip can hold and is the information the choice actually turns on. Cost
+ * per reel is the point of the control, so it is the largest element in each
+ * option rather than a footnote.
  *
  * A native radio group, not buttons with `aria-pressed`. These options are
  * mutually exclusive and a radio group gives arrow-key navigation and correct
  * announcement for free; a row of toggle buttons would announce three
  * independent controls and require rebuilding roving focus by hand.
  *
- * Selection is signalled by border weight AND a checkmark, never by fill alone —
- * the palette's amber means "a human committed to this", and colour is never the
- * only carrier of state.
+ * Selection is signalled by border weight AND background AND a checkmark, never
+ * by fill alone — colour is never the only carrier of state.
  */
 export function ProductionModePanel({
   modes,
@@ -47,30 +46,36 @@ export function ProductionModePanel({
   unmetered: boolean;
 }) {
   return (
-    <Panel>
-      <fieldset className="min-w-0 border-0 p-0">
-        <legend className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-secondary)]">
-          {productionModeCopy.heading}
-        </legend>
+    <Card>
+      <CardHeader
+        title={productionModeCopy.heading}
+        description={productionModeCopy.hint}
+        as="h2"
+      />
 
-        <p className="mt-[var(--space-2)] max-w-[60ch] text-[length:var(--text-app-meta)] leading-[var(--leading-snug)] text-[color:var(--color-text-secondary)]">
-          {productionModeCopy.hint}
-        </p>
+      <CardBody className="pt-[var(--space-4)]">
+        <fieldset className="min-w-0 border-0 p-0">
+          {/* The legend repeats the card title for assistive technology, which
+              reads a fieldset by its legend and would otherwise announce three
+              unlabelled radios. Hidden visually because the title is already
+              on screen directly above. */}
+          <legend className="sr-only">{productionModeCopy.heading}</legend>
 
-        <div className="mt-[var(--space-4)] grid gap-[var(--space-3)] md:grid-cols-3">
-          {modes.map((mode) => (
-            <ModeOption
-              key={mode.id}
-              mode={mode}
-              selected={selected === mode.id}
-              onSelect={() => onSelect(mode.id)}
-              batchCredits={batchCredits[mode.id] ?? 0}
-              unmetered={unmetered}
-            />
-          ))}
-        </div>
-      </fieldset>
-    </Panel>
+          <div className="grid gap-[var(--space-3)] lg:grid-cols-3">
+            {modes.map((mode) => (
+              <ModeOption
+                key={mode.id}
+                mode={mode}
+                selected={selected === mode.id}
+                onSelect={() => onSelect(mode.id)}
+                batchCredits={batchCredits[mode.id] ?? 0}
+                unmetered={unmetered}
+              />
+            ))}
+          </div>
+        </fieldset>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -108,18 +113,23 @@ function ModeOption({
       <label
         htmlFor={inputId}
         className={cn(
-          "flex h-full min-h-11 cursor-pointer flex-col rounded-[var(--radius-sm)] p-[var(--space-4)]",
+          "flex h-full cursor-pointer flex-col rounded-[var(--radius-control)] p-[var(--space-4)]",
           "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-          "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--color-focus)]",
+          "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--focus-ring)]",
           selected
             ? // Compensates for the extra border pixel so selecting an option
               // does not shift its neighbours.
-              "border-2 border-[var(--color-action)] bg-[var(--color-action-wash)] p-[calc(var(--space-4)-1px)]"
-            : "border border-[var(--color-border-hairline)] hover:border-[var(--color-border)]",
+              "border-2 border-[var(--brand-primary)] bg-[var(--brand-soft)] p-[calc(var(--space-4)-1px)]"
+            : "border border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-secondary)]",
         )}
       >
         <span className="flex items-baseline justify-between gap-[var(--space-2)]">
-          <span className="text-[length:var(--text-app-cell)] text-[color:var(--color-text-primary)]">
+          <span
+            className={cn(
+              "app-card-title",
+              selected ? "text-[color:var(--brand-ink)]" : "text-[color:var(--text-primary)]",
+            )}
+          >
             {mode.label}
           </span>
 
@@ -127,7 +137,7 @@ function ModeOption({
               row does not reflow on toggle. */}
           <span aria-hidden="true" className="w-4 shrink-0">
             {selected && (
-              <Check size={14} strokeWidth={2.5} className="text-[color:var(--color-action)]" />
+              <Check size={14} strokeWidth={2.5} className="text-[color:var(--brand-mark)]" />
             )}
           </span>
         </span>
@@ -135,28 +145,29 @@ function ModeOption({
         {/* The price is the largest element because it is what the choice turns
             on. Tabular figures so switching modes does not jitter the column. */}
         <span className="mt-[var(--space-3)] flex items-baseline gap-[var(--space-2)]">
-          <span className="font-utility text-[length:var(--text-metric)] tabular-nums text-[color:var(--color-text-primary)]">
+          <span className="app-figure text-[length:var(--text-metric)] font-[var(--weight-heading)] text-[color:var(--text-primary)]">
             {mode.productionCredits}
           </span>
-          <span className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
+          <span className="text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
             {productionModeCopy.creditsSuffix}
           </span>
         </span>
 
-        <span className="mt-[var(--space-3)] block text-[length:var(--text-app-meta)] leading-[var(--leading-snug)] text-[color:var(--color-text-secondary)]">
+        <span className="mt-[var(--space-2)] block text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]">
           {mode.description}
         </span>
 
-        <span className="mt-[var(--space-4)] block">
-          <span className="block font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
+        <span className="mt-[var(--space-4)] mb-[var(--space-4)] block">
+          <span className="block text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-secondary)]">
             {productionModeCopy.compositionHeading}
           </span>
-          <ul className="mt-[var(--space-2)] flex flex-col gap-[var(--space-1)]">
+          <ul className="mt-[var(--space-2)] flex flex-col gap-1">
             {mode.composition.map((line) => (
               <li
                 key={line}
-                className="text-[length:var(--text-utility-xs)] leading-[var(--leading-snug)] text-[color:var(--color-text-muted)]"
+                className="flex gap-[var(--space-2)] text-[length:var(--text-app-label)] text-[color:var(--text-muted)]"
               >
+                <span aria-hidden="true">·</span>
                 {line}
               </li>
             ))}
@@ -168,11 +179,11 @@ function ModeOption({
             Suppressed entirely when nothing will be billed, rather than shown
             as a cost the user will not incur. */}
         {!unmetered && (
-          <span className="mt-[var(--space-4)] flex items-baseline justify-between gap-[var(--space-2)] border-t border-[var(--color-border-hairline)] pt-[var(--space-3)]">
-            <span className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
+          <span className="mt-auto flex items-baseline justify-between gap-[var(--space-2)] border-t border-[var(--border-subtle)] pt-[var(--space-3)]">
+            <span className="text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
               {productionModeCopy.batchLabel}
             </span>
-            <span className="font-utility text-[length:var(--text-app-meta)] tabular-nums text-[color:var(--color-text-primary)]">
+            <span className="app-figure text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
               {batchCredits.toLocaleString("en-US")}
             </span>
           </span>

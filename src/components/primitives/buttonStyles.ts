@@ -17,10 +17,25 @@ import { cn } from "@/lib/cn";
 export type ButtonVariant = "primary" | "secondary" | "text" | "destructive";
 export type ButtonSize = "md" | "lg";
 
+/**
+ * Height, case, size and tracking are read from tokens rather than written as
+ * literal utilities, because the marketing site and the product need genuinely
+ * different button languages from ONE implementation:
+ *
+ *   marketing   44px, 12px, UPPERCASE, 0.08em tracking — a deliberate, weighty
+ *               commitment control on a cinematic page
+ *   product     36px, 14px, sentence case, no tracking — a compact control in a
+ *               toolbar, forty of which may be on screen at once
+ *
+ * The alternative was a second button component for the app, which is how two
+ * implementations of focus, disabled and loading states drift apart. The defaults
+ * live in tokens.css; `.theme-app` overrides them in app-theme.css.
+ */
 export const buttonBase = cn(
   "relative inline-flex items-center justify-center gap-2",
-  "min-h-11 rounded-[var(--radius-sm)]",
-  "font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)]",
+  "min-h-[var(--button-height)] rounded-[var(--radius-sm)]",
+  "font-utility text-[length:var(--button-text)]",
+  "[text-transform:var(--button-case)] tracking-[var(--button-tracking)]",
   "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
   "select-none",
   "disabled:cursor-not-allowed disabled:opacity-40",
@@ -29,7 +44,10 @@ export const buttonBase = cn(
 );
 
 export const buttonSizeClasses: Record<ButtonSize, string> = {
-  md: "px-4 py-2.5",
+  // No vertical padding: `min-h` plus `items-center` already sets the height, and
+  // adding padding on top of it made the real height depend on the font size,
+  // which is exactly what the token above is trying to control.
+  md: "px-[var(--button-px)]",
   lg: "px-6 py-3.5 text-[length:var(--text-body-s)]",
 };
 

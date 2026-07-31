@@ -80,7 +80,7 @@ export function ChartFrame({
           {series.map((item, index) => (
             <li
               key={item.id}
-              className="flex items-center gap-[var(--space-2)] text-[length:var(--text-utility-xs)] text-[color:var(--color-text-secondary)]"
+              className="flex items-center gap-[var(--space-2)] text-[length:var(--text-app-label)] text-[color:var(--text-secondary)]"
             >
               {/* The swatch carries identity; the label stays in text ink.
                   Series colour never renders text. */}
@@ -118,12 +118,11 @@ export function ChartFrame({
       <details className="mt-[var(--space-4)] group">
         <summary
           className={cn(
-            "inline-flex min-h-11 cursor-pointer list-none items-center gap-[var(--space-2)]",
-            "font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)]",
-            "text-[color:var(--color-text-muted)]",
+            "inline-flex min-h-9 cursor-pointer list-none items-center gap-[var(--space-2)]",
+            "text-[length:var(--text-app-meta)] text-[color:var(--text-muted)]",
             "transition-colors duration-[var(--dur-instant)]",
-            "hover:text-[color:var(--color-text-primary)]",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
+            "hover:text-[color:var(--text-primary)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
             "[&::-webkit-details-marker]:hidden",
           )}
         >
@@ -140,7 +139,7 @@ export function ChartFrame({
               <tr>
                 <th
                   scope="col"
-                  className="sticky top-0 bg-[var(--color-surface-1)] px-[var(--space-2)] py-[var(--space-2)] font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]"
+                  className="sticky top-0 bg-[var(--surface-primary)] px-[var(--space-2)] py-[var(--space-2)] text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-muted)]"
                 >
                   Period
                 </th>
@@ -148,7 +147,7 @@ export function ChartFrame({
                   <th
                     key={item.id}
                     scope="col"
-                    className="sticky top-0 bg-[var(--color-surface-1)] px-[var(--space-2)] py-[var(--space-2)] text-right font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]"
+                    className="sticky top-0 bg-[var(--surface-primary)] px-[var(--space-2)] py-[var(--space-2)] text-right text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-muted)]"
                   >
                     {item.label}
                   </th>
@@ -157,10 +156,10 @@ export function ChartFrame({
             </thead>
             <tbody>
               {xValues.map((x) => (
-                <tr key={x} className="border-t border-[var(--color-border-hairline)]">
+                <tr key={x} className="border-t border-[var(--border-subtle)]">
                   <th
                     scope="row"
-                    className="px-[var(--space-2)] py-[var(--space-2)] font-utility text-[length:var(--text-app-meta)] font-normal text-[color:var(--color-text-secondary)]"
+                    className="px-[var(--space-2)] py-[var(--space-2)] text-[length:var(--text-app-meta)] font-normal text-[color:var(--text-secondary)]"
                   >
                     {formatX(x)}
                   </th>
@@ -169,7 +168,7 @@ export function ChartFrame({
                     return (
                       <td
                         key={item.id}
-                        className="px-[var(--space-2)] py-[var(--space-2)] text-right font-utility text-[length:var(--text-app-meta)] tabular-nums text-[color:var(--color-text-primary)]"
+                        className="app-figure px-[var(--space-2)] py-[var(--space-2)] text-right text-[length:var(--text-app-meta)] text-[color:var(--text-primary)]"
                       >
                         {point ? formatValue(point.y) : "—"}
                       </td>
@@ -196,10 +195,7 @@ function ChartHeading({
 }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-[var(--space-4)]">
-      <h3
-        id={`${id}-title`}
-        className="font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-secondary)]"
-      >
+      <h3 id={`${id}-title`} className="app-card-title text-[color:var(--text-primary)]">
         {title}
       </h3>
       {aside}

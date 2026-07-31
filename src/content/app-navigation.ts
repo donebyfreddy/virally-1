@@ -84,22 +84,20 @@ export const shellCopy = {
   expandLabel: "Expand sidebar",
   openNavLabel: "Open navigation",
   closeNavLabel: "Close navigation",
-  /** Heads the lower sidebar group: workspace administration, not operations. */
-  manageGroupLabel: "Manage",
+  creditsLabel: "Production credits",
 } as const;
 
 /**
- * The secondary card at the foot of the sidebar.
+ * Sidebar group headings.
  *
- * Points at templates rather than at a support chat: the most common reason a
- * new user stalls on this product is not knowing what a good brief looks like,
- * and a worked example answers that faster than a conversation. Revisit if
- * support volume says otherwise.
+ * Both groups are labelled, not just the second one. A single labelled group
+ * under an unlabelled one implies the first group is "everything else", when in
+ * fact the split is meaningful: the upper group is the content supply chain, the
+ * lower group is workspace administration.
  */
-export const supportCard = {
-  title: "Need inspiration?",
-  action: "Explore templates",
-  href: "/app/create#templates",
+export const navGroupLabels = {
+  operate: "Operate",
+  manage: "Manage",
 } as const;
 
 /**
@@ -110,8 +108,7 @@ export const supportCard = {
  * whether they should wait.
  */
 export const notBuiltCopy = {
-  eyebrow: "NOT IMPLEMENTED YET",
-  heading: (label: string) => `${label} is not built yet.`,
+  heading: (label: string) => `${label} is not built yet`,
   body: (phase: number) =>
     `This route exists so navigation never lands on a missing page. The surface is owned by implementation phase ${phase}. Nothing here is a mockup — when it ships it will read live data from your workspace.`,
 } as const;

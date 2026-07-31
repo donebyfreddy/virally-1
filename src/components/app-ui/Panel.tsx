@@ -68,10 +68,13 @@ export function Panel({
   return (
     <Tag
       className={cn(
-        "rounded-[var(--radius-lg)]",
+        "rounded-[var(--radius-card)]",
         toneClasses[tone],
         padClasses[pad],
-        border && "border border-[var(--color-border-hairline)]",
+        // Same border and hairline elevation as `Card`. The two must not drift:
+        // Panel is the unstructured surface and Card is the structured one, but a
+        // page mixing them should not show two different card treatments.
+        border && "border border-[var(--border-default)] shadow-[var(--elevation-card)]",
         className,
       )}
       {...rest}
@@ -105,20 +108,16 @@ export function PanelSection({
 }) {
   return (
     <section aria-labelledby={id} className={className}>
-      <div className="flex min-h-6 items-center justify-between gap-4">
-        <h2
-          id={id}
-          className={cn(
-            "font-utility uppercase",
-            "text-[length:var(--text-utility-xs)] tracking-[var(--tracking-eyebrow)]",
-            "text-[color:var(--color-text-secondary)]",
-          )}
-        >
+      <div className="flex min-h-6 items-center justify-between gap-[var(--space-4)]">
+        {/* Sentence case at reading weight, not wide-tracked uppercase. A section
+            label is a heading; uppercase in the product is reserved for the
+            compact utility labels on table columns and KPI captions. */}
+        <h2 id={id} className="app-card-title text-[color:var(--text-primary)]">
           {title}
         </h2>
         {aside}
       </div>
-      <div className="mt-[var(--space-4)]">{children}</div>
+      <div className="mt-[var(--space-3)]">{children}</div>
     </section>
   );
 }

@@ -81,7 +81,6 @@ export default async function AccountsPage({
   return (
     <AppPage>
       <PageHeader
-        eyebrow={accountsPage.eyebrow}
         title={accountsPage.heading}
         description={accountsPage.intro}
         meta={[usageSummary(network.usage)]}

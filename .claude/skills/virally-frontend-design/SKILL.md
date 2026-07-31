@@ -1,13 +1,22 @@
 ---
 name: virally-frontend-design
-description: Design and frontend rules for the Virally marketing site. Load before creating or editing any component, style, token or motion in web/. Covers product personality, the justification test, typography, spacing, radius, the measured colour palette, component state requirements, the motion doctrine, and the anti-generic prohibitions.
+description: Design and frontend rules for Virally — both the dark cinematic marketing site and the light authenticated product. Load before creating or editing any component, style, token or motion. Covers product personality, the justification test, typography, spacing, radius, the measured colour palettes, component state requirements, the motion doctrine, the anti-generic prohibitions, and (section 16) the separate light design system that governs everything under /app.
 ---
 
 # Virally frontend design
 
-The standing reference for every visual and interaction decision on the Virally
-marketing site. Read this before writing a component. If a decision here
-conflicts with an ad-hoc instinct, this file wins.
+The standing reference for every visual and interaction decision on Virally. Read
+this before writing a component. If a decision here conflicts with an ad-hoc
+instinct, this file wins.
+
+> **Two systems, one product.** Sections 1–15 govern the **marketing site**, which
+> is dark and cinematic. **Section 16 governs the authenticated app**, which is
+> light, dense and operational, and which deliberately overrides much of what
+> follows. If you are editing anything under `src/app/app/**`,
+> `src/components/app-shell/**` or `src/components/app-ui/**`, **read section 16
+> first** — several rules below are inverted there, and applying the marketing
+> typography or the amber accent inside the product is the specific mistake
+> section 16 exists to prevent.
 
 ---
 
@@ -470,3 +479,182 @@ equivalents for every graph, DOM alternatives for every canvas.
 SVG visualisations are `aria-hidden` and **always paired with a rendered DOM
 equivalent** — a structured list or data table. Information never exists only in
 a drawing.
+
+---
+
+## 16. The authenticated app — a second, light design system
+
+Everything under `src/app/app/**`, `src/components/app-shell/**` and
+`src/components/app-ui/**` runs on a **separate light system**, defined in
+`src/styles/app-theme.css` and scoped to the `.theme-app` class that
+`AppShell` puts on the shell root.
+
+Read `src/styles/app-theme.css` before writing app code. It is commented as the
+primary reference; this section is the summary and the rules that live outside it.
+
+### Why it is a different system, not a variant
+
+A marketing page persuades with negative space and a near-black stage. An
+operations surface earns trust by showing a lot of true state at once, and it is
+read for hours. Those are opposite briefs. Sharing one palette between them
+produced a product that looked like a developer prototype: near-black canvas,
+44px uppercase amber buttons, 44px display headlines above empty tables.
+
+> **Marketing sells the idea. The app runs the supply chain. Density, not drama.**
+
+### What is inverted from sections 1–15
+
+| | Marketing | App |
+|---|---|---|
+| Canvas | `#07090d` near-black | `#f4f7f8` light |
+| Accent | Amber `--color-action` | Teal `--brand-primary` |
+| Display face | Bricolage Grotesque 800 | **Never used.** Geist 600 |
+| Utility face | JetBrains Mono | **Never used.** Geist, tabular figures |
+| Page heading | up to 96px | 28–32px (`app-title`) |
+| Buttons | 44px, UPPERCASE, 0.08em | 36px, sentence case, 0em |
+| Eyebrows | uppercase 0.16em | **Deleted.** No eyebrows in the app |
+| Radius | 4px / 16px | 12px card / 8px control / 6px chip |
+
+The button metrics are tokens (`--button-height`, `--button-case`,
+`--button-text`, `--button-tracking`, `--button-px`) read by
+`buttonStyles.ts`, so **one** button implementation serves both languages.
+Never fork the button.
+
+### The token bridge — and the rule about it
+
+`.theme-app` re-points every legacy `--color-*` name at the light system, which is
+what let the whole product convert without rewriting 40 files at once.
+
+**New app code must read the canonical names, never the `--color-*` aliases.**
+`--surface-primary`, not `--color-surface-1`. `--brand-primary`, not
+`--color-action`.
+
+### Colour pairs — the rule most easily broken
+
+Saturated teals, greens, ambers and reds are all intrinsically light. On white,
+**one hex cannot both carry text and read as a mark.** So each is a pair:
+
+- `--{name}` — carries TEXT. ≥4.5:1 on all four app surfaces.
+- `--{name}-mark` — dots, bars, strokes, icons, chart series. ≥3:1. **Never text.**
+- `--{name}-soft` — the chip background.
+
+Putting `--brand-mark` or a `-mark` on a label is the violation to watch for. It
+looks fine and measures 3.7:1.
+
+There is a test that will catch you: `src/lib/accessibility/appPalette.test.ts`
+asserts every floor, asserts each hex matches `src/styles/app-theme.css`, and
+asserts `--brand-mark` **still fails** the text floor — so nobody can "simplify"
+the pair back into one token without the suite going red.
+
+The brief that specified this palette asked for `#10b8aa`. It measures 2.48:1 on
+white and fails even the graphical floor. **Measure; do not eyeball.** Three
+tokens in the first pass were wrong and all three looked fine.
+
+### Component vocabulary
+
+Compose from these. Do not hand-roll another version of one.
+
+| Need | Use |
+|---|---|
+| Page container / rhythm / 12-col grid | `AppPage`, `PageStack`, `DashGrid` |
+| Page or section heading | `PageHeader`, `SectionHeader` |
+| Bordered surface with header/body/footer | `Card`, `CardHeader`, `CardBody`, `CardFooter` |
+| Boxed KPI tile / KPI strip | `KpiCard`, `KpiGrid` |
+| Borderless figure inside a panel | `Metric`, `MetricRow`, `Delta` |
+| Unstructured surface | `Panel`, `PanelSection` |
+| Tabular data | `DataTable`, `PrimaryCell`, `CellThumb` |
+| Search + filters + view switch | `FilterBar` |
+| Empty / loading / error | `EmptyState`, `LoadingState`, `ErrorState` |
+| Human review state | `StatusChip` |
+| Machine progress | `Progress` |
+
+`Panel` is the unstructured surface; `Card` is the structured one. They share a
+border and elevation on purpose — a page mixing them must not show two card
+treatments.
+
+### Typography classes
+
+`app-title` (page h1), `app-section-title`, `app-card-title`, `app-label`,
+`app-figure`.
+
+**Sentence case everywhere.** `app-label` is uppercase and is the *only*
+exception — reserved for table column headers and month-grid weekday headers.
+Never a heading. Never a form label. Never a KPI caption (they truncate; six
+tiles across 1536px gives each about 130px).
+
+`app-figure` — tabular figures — is **mandatory** on every number. Without it a
+column of figures misaligns and animated values jitter.
+
+### Density
+
+Controls `h-8` (32px) or `h-9` (36px). Card padding `--app-panel-pad` (20px).
+Content column `--app-content-max` (1536px), not the marketing 1248px — an
+operational table has real columns to place. `AppPage width="full"` for the
+calendar and editor.
+
+**Target size.** A 36px text button clears WCAG 2.2 SC 2.5.8 (AA, 24×24)
+comfortably. Icon-only controls under 44px carry a transparent inset instead:
+
+```
+relative … after:absolute after:left-1/2 after:top-1/2 after:size-11
+after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']
+```
+
+Do **not** apply this to text buttons — a pseudo-element overhanging 4px each
+side steals clicks from a control stacked above or below.
+
+### Motion
+
+**Framer Motion is not in the app bundle.** The root layout deliberately does not
+mount `MotionProvider`; the marketing page opts in alone. Importing it to slide a
+drawer puts ~34KB of JS on every product route to animate two transforms.
+
+Use the keyframes in `app-theme.css` via Tailwind's **arbitrary animation value**:
+
+```
+motion-safe:animate-[virally-app-drawer-in_var(--dur-panel)_var(--ease-settle)_backwards]
+```
+
+Never a hand-written convenience class like `animate-drawer-in`. Tailwind only
+generates variants for utilities it knows about, so `motion-safe:` against a
+custom class emits nothing, leaves an unmatched literal string in the markup, and
+**silently drops the reduced-motion guard too**. This was a real bug here.
+
+### Empty states carry the first run
+
+A new workspace sees an empty state on nearly every page, so the empty state *is*
+the first-run experience. It must be **compact** — icon, one sentence, one primary
+and one secondary action — and then get out of the way so real onboarding content
+sits underneath it on the same screen.
+
+`/app/campaigns` shows worked-example templates below its empty state;
+`/app` shows a three-step checklist whose steps tick themselves from real
+workspace state. A compact empty state above a screen and a half of blank canvas
+has replaced one problem with another.
+
+### The honesty rules still apply, harder
+
+Section 10 governs the app too, and matters more there because the app renders
+real numbers:
+
+- Never fabricate a metric, a thumbnail or a chart. A new workspace returns zeros
+  and empty arrays; render a stated empty state, not a demo dataset.
+- Derive figures from the ledger or from real rows, never a mutable counter, so a
+  number can always be traced to what produced it.
+- A capped list says it is capped. Silent truncation reads as completeness.
+- Every "nothing here yet" string says what will populate the panel — but in one
+  line. A four-line paragraph on the epistemics of sample data is longer than the
+  card it sits in.
+- A delta against a zero baseline is not a measurable change. Render "no prior
+  data", not "+100%".
+- A regression is stated in muted text, not red. Red is for something that
+  *failed*; a dashboard of red deltas trains the user to ignore red.
+
+### Server-first
+
+Pages stay server components; only genuine interaction crosses the boundary
+(`FilterBar`, `Switcher`, `TimeSeriesChart`, `MobileNav`, `Sidebar`, `TopBar`).
+List filtering happens **in SQL from URL search params** — validated against its
+option set before it reaches the query — never by fetching everything and hiding
+rows. That also makes a filtered list a shareable link and the back button an
+undo. Batch independent aggregates into one `Promise.all`.

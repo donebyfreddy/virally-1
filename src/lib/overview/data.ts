@@ -4,6 +4,7 @@ import {
   activityEvents,
   analyticsDaily,
   campaigns,
+  campaignStages,
   connectedAccounts,
   contentItems,
   contentVariants,
@@ -357,5 +358,64 @@ export async function readGenerationActivity(workspaceId: string): Promise<Gener
     // distinction is internal to the worker.
     queued: (byStatus.get("queued") ?? 0) + (byStatus.get("pending") ?? 0),
     failed: byStatus.get("failed") ?? 0,
+  };
+}
+
+export type OperationsSnapshot = {
+  /** Campaigns with a stage genuinely running right now. */
+  activeCampaigns: number;
+  /** Connected accounts by health, for the account-health card. */
+  accountsHealthy: number;
+  accountsNeedingAttention: number;
+  accountsTotal: number;
+};
+
+/**
+ * The operational counts the KPI strip and the account-health card need.
+ *
+ * Separate from `readKpis` because these are not performance measures and carry no
+ * period comparison: "three campaigns are generating" is a fact about right now,
+ * and pairing it with a 28-day delta would imply a trend that does not exist.
+ *
+ * "Active" is read from real stage rows rather than from a status column. A
+ * campaign whose last stage failed still has `status = 'approved'`, and counting
+ * it as active is how a dashboard ends up reassuring a user about work that
+ * stopped hours ago.
+ */
+export async function readOperationsSnapshot(workspaceId: string): Promise<OperationsSnapshot> {
+  const [campaignRows, accountRows] = await Promise.all([
+    db
+      .select({ value: sql<number>`count(distinct ${campaignStages.campaignId})::int` })
+      .from(campaignStages)
+      .innerJoin(campaigns, eq(campaigns.id, campaignStages.campaignId))
+      .where(
+        and(
+          eq(campaigns.workspaceId, workspaceId),
+          isNull(campaigns.deletedAt),
+          eq(campaignStages.state, "active"),
+        ),
+      ),
+
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        healthy: sql<number>`count(*) filter (where ${connectedAccounts.health} = 'healthy')::int`,
+      })
+      .from(connectedAccounts)
+      .where(
+        and(
+          eq(connectedAccounts.workspaceId, workspaceId),
+          isNull(connectedAccounts.disconnectedAt),
+        ),
+      ),
+  ]);
+
+  const accounts = accountRows[0] ?? { total: 0, healthy: 0 };
+
+  return {
+    activeCampaigns: campaignRows[0]?.value ?? 0,
+    accountsHealthy: accounts.healthy,
+    accountsNeedingAttention: accounts.total - accounts.healthy,
+    accountsTotal: accounts.total,
   };
 }

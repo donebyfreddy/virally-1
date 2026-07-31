@@ -55,7 +55,7 @@ export default async function TeamPage() {
       <AppPage width="text">
         <AuthMessage
           tone="notice"
-          title="NOT AVAILABLE TO YOUR ROLE"
+          title="Not available to your role"
           body="Managing the team requires the team.manage permission. You can see your own role in the account menu."
         />
       </AppPage>
@@ -126,7 +126,6 @@ export default async function TeamPage() {
   return (
     <AppPage>
       <PageHeader
-        eyebrow={teamCopy.eyebrow}
         title={teamCopy.title}
         description={teamCopy.body}
         meta={[

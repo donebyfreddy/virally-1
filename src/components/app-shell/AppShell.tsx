@@ -20,10 +20,14 @@ import type { SwitcherOption } from "./Switcher";
 export function AppShell({
   context,
   unreadNotifications,
+  creditsAvailable,
+  creditsReserved,
   children,
 }: {
   context: TenantContext;
   unreadNotifications: number;
+  creditsAvailable: number;
+  creditsReserved: number;
   children: ReactNode;
 }) {
   const workspaceOptions: SwitcherOption[] = context.workspaces.map((workspace) => ({
@@ -46,7 +50,11 @@ export function AppShell({
   }));
 
   return (
-    <div className="flex min-h-dvh">
+    // `theme-app` is what makes the authenticated surface light. It carries the
+    // whole product token set — surfaces, the teal accent, the dense type scale —
+    // and is scoped to this subtree so the marketing site stays cinematic and
+    // dark. See styles/app-theme.css.
+    <div className="theme-app flex min-h-dvh">
       <SkipLink />
       <Sidebar role={context.role} />
 
@@ -60,6 +68,8 @@ export function AppShell({
           userLabel={displayName(context.user) ?? "Account"}
           userEmail={context.user.email ?? ""}
           unreadNotifications={unreadNotifications}
+          creditsAvailable={creditsAvailable}
+          creditsReserved={creditsReserved}
         />
 
         {/* `min-w-0` on both this and the flex parent: without it a wide table or

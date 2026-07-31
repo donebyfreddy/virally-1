@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
+/* Scoped to `.theme-app`, which only the authenticated shell carries. Imported
+   after tokens.css so the bridge inside it wins over the dark defaults. */
+@import "../styles/app-theme.css";
 
 /* ============================================================================
    No `@theme inline` bridge.

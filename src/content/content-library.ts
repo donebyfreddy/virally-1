@@ -8,14 +8,32 @@
  */
 
 export const contentCopy = {
-  eyebrow: "CONTENT",
-  title: "Every item, and every variant of it.",
-  body: "A content item is one idea. Its variants are that idea recomposed for each platform, format and language. Approval happens per variant, because that is what gets published.",
+  title: "Content",
+  body: "Every item this workspace has produced, and the platform variants generated from each one.",
   tableCaption: "Content items in this workspace",
+  gridLabel: "Content items",
+
+  /** KPI captions. Sentence case: they sit in ~130px and uppercase truncates. */
+  kpis: {
+    items: "Items",
+    review: "Needs review",
+    variants: "Variants",
+    published: "Published posts",
+  },
+
+  statusTabsLabel: "Filter by review state",
+  allStatuses: "All",
+
+  /** Stated on a figure the platforms have not reported for this item. */
+  metricUnreported: "Not reported",
+
+  openEditor: "Open editor",
+  openCampaign: "Campaign",
+  demoLabel: "Demo",
 
   empty: {
     title: "No content yet.",
-    body: "Content appears here once a campaign has generated scripts and assets. You can also upload footage you already have and let Virally recompose it.",
+    body: "Content appears here once a campaign has generated scripts and assets, or once footage you own has been recomposed.",
   },
 
   noMatches: {
@@ -26,10 +44,76 @@ export const contentCopy = {
   truncated: (shown: number, total: number) =>
     `Showing the ${shown} most recent of ${total.toLocaleString("en-US")}. Narrow the filters to find older items.`,
 
-  /** Bulk actions are listed but not wired; see the note on the toolbar. */
-  bulkUnavailable:
-    "Bulk approve, regenerate and schedule act on the publishing pipeline and are part of the review phase. They are not wired up yet, so they are not offered here — a button that silently does nothing is worse than its absence.",
+  onboardingHeading: "How content gets here",
+  onboardingBody: "Three routes produce a content item, and all of them land on this page.",
 } as const;
+
+/**
+ * The routes that populate this page, shown under the first-run empty state.
+ *
+ * Every `href` is a real route. A first-run user needs the next action more than
+ * a longer explanation of why the list is empty, which is why the empty state
+ * above this stays one sentence.
+ */
+export const contentRoutes: readonly {
+  id: string;
+  title: string;
+  body: string;
+  href: string;
+  cta: string;
+}[] = [
+  {
+    id: "campaign",
+    title: "Generate from a campaign",
+    body: "The scripts and assets stages of a campaign produce items and their variants.",
+    href: "/app/create",
+    cta: "Start a campaign",
+  },
+  {
+    id: "recompose",
+    title: "Recompose footage you own",
+    body: "Source video and images in the library become items once they are recomposed per platform.",
+    href: "/app/library",
+    cta: "Open the library",
+  },
+  {
+    id: "publish",
+    title: "Publish what is approved",
+    body: "An approved variant moves to the calendar and out to a connected account.",
+    href: "/app/calendar",
+    cta: "Open the calendar",
+  },
+];
+
+/**
+ * `review_status` values, in the order the tabs and filters offer them.
+ *
+ * Shared by the status tabs (which read `content_items.status`) and the variant
+ * filter (which reads `content_variants.status`) — the same vocabulary applies to
+ * both, and two copies of it would drift.
+ */
+export const APPROVAL_OPTIONS: readonly { id: string; label: string }[] = [
+  { id: "draft", label: "Draft" },
+  { id: "awaiting_review", label: "Needs review" },
+  { id: "approved", label: "Approved" },
+  { id: "rejected", label: "Rejected" },
+  { id: "archived", label: "Archived" },
+];
+
+/**
+ * Sort orders offered on the content list.
+ *
+ * Every one of these is expressible as a SQL `order by` on the columns the list
+ * query already selects. Sorting by views is deliberately absent: per-item view
+ * totals come from a second aggregate over `content_metrics`, so ordering by them
+ * would mean fetching the whole workspace to sort it in memory.
+ */
+export const CONTENT_SORT_OPTIONS: readonly { id: string; label: string }[] = [
+  { id: "recent", label: "Recently updated" },
+  { id: "created", label: "Newest created" },
+  { id: "title", label: "Title A–Z" },
+  { id: "duration", label: "Longest first" },
+];
 
 export const libraryCopy = {
   eyebrow: "LIBRARY",
