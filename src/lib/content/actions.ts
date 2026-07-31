@@ -20,6 +20,12 @@ import { can } from "@/lib/permissions";
 import { getLanguageProvider, isMockOnly } from "@/lib/ai/registry";
 import { sanitiseExternalText } from "@/lib/ai/types";
 import {
+  DEFAULT_LENGTH_DAYS,
+  GOAL_OPTIONS,
+  LENGTH_OPTIONS,
+  TONE_OPTIONS,
+} from "@/content/create";
+import {
   estimateCost,
   requiresConfirmation,
   validatePlanRequest,
@@ -43,6 +49,52 @@ import {
 const VALID_PLATFORMS = new Set<Platform>(["instagram", "tiktok", "youtube", "facebook"]);
 const VALID_RATIOS = new Set<AspectRatio>(["9:16", "4:5", "1:1", "16:9", "4:3", "3:2", "custom"]);
 const VALID_QUALITY = new Set<Quality>(["draft", "standard", "high"]);
+
+// Allow-lists for the three campaign-shape controls. Validated against the same
+// option sets the composer renders, so a hand-crafted form body cannot write an
+// arbitrary string into the campaign's objective or the brief's tone.
+const VALID_TONES = new Set(TONE_OPTIONS.map((option) => option.id));
+const VALID_GOALS = new Set(GOAL_OPTIONS.map((option) => option.id));
+const VALID_LENGTH_DAYS = new Set(LENGTH_OPTIONS.map((option) => option.days));
+
+/**
+ * Renders a campaign's date range from a length in days.
+ *
+ * Starts today. `endsOn` is inclusive, hence `days - 1`: a 7-day campaign
+ * starting Monday ends the following Sunday, not the Monday after.
+ *
+ * Both are `date` columns (no time component), so they are formatted as
+ * calendar dates rather than passed as `Date` objects — a timestamp would be
+ * interpreted in the server's zone and could land on the previous day.
+ */
+function dateRangeFor(days: number): { startsOn: string; endsOn: string } {
+  const start = new Date();
+  const end = new Date(start);
+  end.setDate(end.getDate() + days - 1);
+  return { startsOn: toDateOnly(start), endsOn: toDateOnly(end) };
+}
+
+function toDateOnly(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * The model is prompted with the human-readable label, not the stored id.
+ *
+ * "product_awareness" is a database value; "Product awareness" is what the
+ * option actually means, and sending the snake_case id would have the model
+ * infer the intent from an identifier.
+ */
+function toneLabel(id: string): string {
+  return TONE_OPTIONS.find((option) => option.id === id)?.label ?? id;
+}
+
+function goalLabel(id: string): string {
+  return GOAL_OPTIONS.find((option) => option.id === id)?.label ?? id;
+}
 
 function parseList(raw: string): string[] {
   return raw
@@ -97,6 +149,20 @@ export async function createCampaign(formData: FormData): Promise<void> {
       : "standard",
   };
 
+  // The three campaign-shape controls. Each falls back to its default rather
+  // than rejecting the submission: an unrecognised value here is a stale client
+  // or a crafted body, and losing the user's brief over it would be the worse
+  // outcome. The plan request itself is still validated strictly below.
+  const rawTone = String(formData.get("tone") ?? "");
+  const tone = VALID_TONES.has(rawTone) ? rawTone : null;
+
+  const rawGoal = String(formData.get("goal") ?? "");
+  const objective = VALID_GOALS.has(rawGoal) ? rawGoal : null;
+
+  const rawLengthDays = parseInt10(String(formData.get("lengthDays") ?? ""), DEFAULT_LENGTH_DAYS);
+  const lengthDays = VALID_LENGTH_DAYS.has(rawLengthDays) ? rawLengthDays : DEFAULT_LENGTH_DAYS;
+  const { startsOn, endsOn } = dateRangeFor(lengthDays);
+
   const errors = validatePlanRequest(request);
   if (errors.length > 0) redirect("/app/create?error=invalid");
 
@@ -121,9 +187,11 @@ export async function createCampaign(formData: FormData): Promise<void> {
       workspaceId: context.workspaceId,
       brandId: context.brandId,
       name: deriveName(prompt),
-      objective: null,
+      objective,
       mode: "campaign",
       status: "draft",
+      startsOn,
+      endsOn,
       // Copied to mutable arrays: the generated Insert types are mutable, and the
       // PlanRequest fields are readonly by design so a validator cannot mutate them.
       languages: [...request.languages],
@@ -143,6 +211,7 @@ export async function createCampaign(formData: FormData): Promise<void> {
     version: 1,
     rawPrompt: prompt,
     sourceKind: "prompt",
+    tone,
     // The sanitiser ran, so downstream generation may proceed. A stage that finds
     // this false must refuse rather than assume it was handled upstream.
     externalTextSanitised: true,
@@ -181,12 +250,15 @@ export async function createCampaign(formData: FormData): Promise<void> {
   const provider = getLanguageProvider();
   const origin = isMockOnly() ? ("mock" as const) : ("provider" as const);
 
+  // Tone and objective are passed through, not just persisted: a control that is
+  // stored but never reaches the model would change the record without changing
+  // the output, which is the same as not working.
   const briefResult = await provider.buildBrief({
     prompt: safePrompt,
     brandName: context.brands.find((brand) => brand.id === context.brandId)?.name ?? null,
     audience: null,
-    tone: null,
-    objective: null,
+    tone: tone ? toneLabel(tone) : null,
+    objective: objective ? goalLabel(objective) : null,
     language,
   });
 

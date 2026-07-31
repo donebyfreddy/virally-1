@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Menu, Plus, X } from "lucide-react";
 import type { MemberRole } from "@/types/database";
 import { cn } from "@/lib/cn";
 import { can } from "@/lib/permissions";
 import { navItems, createAction, shellCopy } from "@/content/app-navigation";
+import { NAV_ICON_SIZE, NAV_ICON_STROKE, navIcons } from "./navIcons";
 
 /**
  * Mobile navigation drawer.
@@ -84,7 +86,7 @@ export function MobileNav({ role }: { role: MemberRole }) {
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
         )}
       >
-        <span aria-hidden="true">☰</span>
+        <Menu aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
         <span className="sr-only">{shellCopy.openNavLabel}</span>
       </button>
 
@@ -113,7 +115,7 @@ export function MobileNav({ role }: { role: MemberRole }) {
                 onClick={() => setOpen(false)}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--color-text-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
               >
-                <span aria-hidden="true">✕</span>
+                <X aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE} />
                 <span className="sr-only">{shellCopy.closeNavLabel}</span>
               </button>
             </div>
@@ -123,6 +125,7 @@ export function MobileNav({ role }: { role: MemberRole }) {
                 {visible.map((item) => {
                   const active =
                     item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
+                  const Icon = navIcons[item.id];
                   return (
                     <li key={item.id}>
                       <Link
@@ -132,7 +135,7 @@ export function MobileNav({ role }: { role: MemberRole }) {
                         onClick={() => setOpen(false)}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                          "flex min-h-11 flex-col justify-center rounded-[var(--radius-sm)] px-3 py-2",
+                          "flex min-h-11 items-start gap-[var(--space-3)] rounded-[var(--radius-sm)] px-[var(--space-3)] py-[var(--space-2)]",
                           "transition-colors duration-[var(--dur-instant)]",
                           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
                           active
@@ -140,16 +143,24 @@ export function MobileNav({ role }: { role: MemberRole }) {
                             : "text-[color:var(--color-text-secondary)]",
                         )}
                       >
-                        <span className="flex items-center gap-2 text-[length:var(--text-body-s)]">
-                          {active && (
-                            <span aria-hidden="true" className="text-[color:var(--color-action)]">
-                              ▸
-                            </span>
+                        <Icon
+                          aria-hidden="true"
+                          size={NAV_ICON_SIZE}
+                          strokeWidth={NAV_ICON_STROKE}
+                          className={cn(
+                            "mt-1 shrink-0",
+                            active
+                              ? "text-[color:var(--color-action)]"
+                              : "text-[color:var(--color-text-muted)]",
                           )}
-                          {item.label}
-                        </span>
-                        <span className="text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
-                          {item.hint}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[length:var(--text-body-s)]">
+                            {item.label}
+                          </span>
+                          <span className="block text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+                            {item.hint}
+                          </span>
                         </span>
                       </Link>
                     </li>
@@ -169,7 +180,7 @@ export function MobileNav({ role }: { role: MemberRole }) {
                   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]",
                 )}
               >
-                <span aria-hidden="true">+</span>
+                <Plus aria-hidden="true" size={NAV_ICON_SIZE} strokeWidth={2} />
                 {createAction.label}
               </Link>
             </div>

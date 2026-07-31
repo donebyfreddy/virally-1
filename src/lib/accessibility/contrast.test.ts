@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contrastLevel, contrastRatio, relativeLuminance } from "./contrast";
-import { contrastContract, palette, surfaces } from "./palette";
+import {
+  CHART_SERIES_MIN_CONTRAST,
+  chartDashPatterns,
+  chartSeries,
+  contrastContract,
+  palette,
+  surfaces,
+} from "./palette";
 
 // Resolved from the project root: under the jsdom environment `import.meta.url`
 // is not a file:// URL, so URL-relative resolution is unavailable here.
@@ -81,6 +88,50 @@ describe("surface elevation", () => {
 
   it("separates the extremes of the ramp clearly", () => {
     expect(contrastRatio(palette.canvas, palette["surface-3"])).toBeGreaterThan(1.3);
+  });
+});
+
+describe("the chart series ramp", () => {
+  // The ramp is the one exception to the two-accent taxonomy, so the terms of
+  // that exception are asserted rather than trusted.
+
+  it("keeps every series legible as a line on the panel it is drawn on", () => {
+    for (const series of chartSeries) {
+      const ratio = contrastRatio(palette[series], palette["surface-1"]);
+      expect(
+        ratio,
+        `${series} measured ${ratio.toFixed(2)}:1 on the panel`,
+      ).toBeGreaterThanOrEqual(CHART_SERIES_MIN_CONTRAST);
+    }
+  });
+
+  /**
+   * The ramp is bright by choice, which puts the series close together in
+   * luminance — so hue is NOT a sufficient channel and the dash pattern is
+   * load-bearing. These two tests are the pair that keeps that honest: the
+   * first proves hue alone is insufficient, the second proves the compensating
+   * channel exists and is unique per series. Deleting either one lets an
+   * inaccessible chart ship.
+   */
+  it("documents that hue alone cannot separate the series", () => {
+    const closest = contrastRatio(palette["chart-1"], palette["chart-3"]);
+    expect(closest).toBeLessThan(1.3);
+  });
+
+  it("gives every series a distinct stroke pattern", () => {
+    const patterns = chartSeries.map((series) => chartDashPatterns[series]);
+    expect(new Set(patterns).size).toBe(chartSeries.length);
+  });
+
+  it("mirrors each stroke pattern in tokens.css", () => {
+    chartSeries.forEach((series, index) => {
+      expect(tokensCss).toContain(`--chart-dash-${index + 1}: ${chartDashPatterns[series]};`);
+    });
+  });
+
+  it("assigns the primary measure to series 1, drawn solid", () => {
+    expect(chartSeries[0]).toBe("chart-1");
+    expect(chartDashPatterns["chart-1"]).toBe("none");
   });
 });
 

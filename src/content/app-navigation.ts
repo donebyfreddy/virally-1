@@ -12,7 +12,7 @@ import type { Permission } from "@/types/database";
  * the shell mark them honestly instead of pretending they work.
  */
 export type NavItem = {
-  id: string;
+  id: NavId;
   label: string;
   href: string;
   /** Short description used by the command palette and mobile nav. */
@@ -22,6 +22,27 @@ export type NavItem = {
   /** Groups items under a divider in the sidebar. */
   group: "operate" | "manage";
 };
+
+/**
+ * The closed set of navigation destinations.
+ *
+ * Declared as a union rather than `string` so the sidebar's icon registry is
+ * exhaustive by type: adding a nav item without giving it an icon becomes a
+ * compile error instead of a silently missing glyph.
+ */
+export type NavId =
+  | "overview"
+  | "create"
+  | "campaigns"
+  | "content"
+  | "calendar"
+  | "accounts"
+  | "analytics"
+  | "library"
+  | "experiments"
+  | "team"
+  | "usage"
+  | "settings";
 
 export const navItems: readonly NavItem[] = [
   { id: "overview", label: "Overview", href: "/app", hint: "Performance, queue and account health", phase: 4, group: "operate" },
@@ -39,9 +60,15 @@ export const navItems: readonly NavItem[] = [
   { id: "settings", label: "Settings", href: "/app/settings", hint: "Workspace, brand and preferences", phase: 10, group: "manage" },
 ] as const;
 
-/** The persistent create action, kept out of `navItems` so it renders as a button. */
+/**
+ * The persistent create action, kept out of `navItems` so it renders as a button.
+ *
+ * Labelled "New campaign" rather than "Create": the sidebar already has a
+ * Create destination, and two adjacent controls both reading "Create" gives no
+ * clue that one navigates and one starts something.
+ */
 export const createAction = {
-  label: "Create",
+  label: "New campaign",
   href: "/app/create",
   shortcut: "C",
 } as const;
@@ -57,6 +84,22 @@ export const shellCopy = {
   expandLabel: "Expand sidebar",
   openNavLabel: "Open navigation",
   closeNavLabel: "Close navigation",
+  /** Heads the lower sidebar group: workspace administration, not operations. */
+  manageGroupLabel: "Manage",
+} as const;
+
+/**
+ * The secondary card at the foot of the sidebar.
+ *
+ * Points at templates rather than at a support chat: the most common reason a
+ * new user stalls on this product is not knowing what a good brief looks like,
+ * and a worked example answers that faster than a conversation. Revisit if
+ * support volume says otherwise.
+ */
+export const supportCard = {
+  title: "Need inspiration?",
+  action: "Explore templates",
+  href: "/app/create#templates",
 } as const;
 
 /**

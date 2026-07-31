@@ -176,6 +176,113 @@
   --ratio-1-1: 1 / 1;
   --ratio-16-9: 16 / 9;
   --ratio-4-3: 4 / 3;
+
+  /* ==================================================================
+     APP LAYER — the authenticated product only.
+     The marketing site never reads these.
+
+     The product is denser than the marketing site by design: a
+     marketing page persuades with negative space, an operations
+     surface earns trust by showing a lot of true state at once. So the
+     app gets its own gutter, panel padding and type step — derived
+     from the same 4px foundation, never new arbitrary values.
+     ================================================================ */
+
+  /* APP — layout skeleton */
+  --app-rail: 15rem;            /* sidebar, expanded */
+  --app-rail-collapsed: 4.5rem; /* sidebar, collapsed — still >=44px targets */
+  --app-topbar-height: 4.5rem;  /* matches the reference's compact-but-real bar */
+  --app-summary-rail: 23rem;    /* right-hand summary panel */
+  --app-gutter: var(--space-6);
+  --app-panel-gap: var(--space-4);
+
+  /* APP — panel padding. Three sizes, chosen by information density,
+     not by nesting depth. */
+  --app-panel-pad: var(--space-6);
+  --app-panel-pad-tight: var(--space-4);
+  --app-panel-pad-loose: var(--space-8);
+
+  /* APP — surfaces.
+     `panel` is the default product surface; `panel-raised` is for a
+     control sitting ON a panel. Deliberately NOT glassmorphism: these
+     are opaque, because a translucent panel over a chart makes both
+     unreadable.
+
+     `panel-wash` is the one ambient treatment — a barely-there cool
+     lift on a hero panel, at 4% of a surface colour already in the
+     ramp. It is not a glow, carries no information, and introduces no
+     hue outside the existing slate ramp. */
+  --app-panel: var(--color-surface-1);
+  --app-panel-raised: var(--color-surface-2);
+  --app-panel-inset: var(--color-canvas);
+  --app-panel-wash: rgb(40 49 63 / 0.4);
+
+  /* APP — dense type steps.
+     `--text-body-s` (15px) is the product's reading size; these two
+     sit below it for table cells and dense metadata. Both stay above
+     the 12px floor the accessibility review set. */
+  --text-app-cell: 0.875rem;  /* 14 — table cells, list rows */
+  --text-app-meta: 0.8125rem; /* 13 — secondary metadata */
+
+  /* APP — metric figures. Smaller than the marketing display scale:
+     a KPI strip needs six figures on one row, not one hero number. */
+  --text-metric-l: 2rem;
+  --text-metric: 1.5rem;
+  --text-metric-s: 1.125rem;
+
+  /* ==================================================================
+     CHARTS — the one licensed categorical ramp.
+
+     The two-accent taxonomy governs UI chrome, where amber and teal
+     carry meaning. A multi-series chart is the single exception: four
+     series need four distinguishable marks, and reusing amber for a
+     data series would claim the user must act on it.
+
+     Rules that keep this from becoming decoration:
+       - Series colour is assigned by INDEX, never by sentiment.
+       - Order is fixed. Series 1 is always the primary measure.
+       - Nothing outside a chart may read these tokens.
+       - Every series is directly labelled, AND carries the matching
+         --chart-dash-N stroke pattern below.
+
+     That last rule is what makes the ramp accessible, and it is not
+     optional. These four colours are deliberately all bright (>=7:1 on
+     the panel) so a 2px line is legible on a dark surface — which means
+     they sit close together in LUMINANCE, and series 1 and 3 in
+     particular are near-identical in greyscale. Hue therefore cannot be
+     the thing that separates them. The dash pattern is. A chart that
+     uses these colours without the dash patterns is not accessible, and
+     the alternative — spreading the four across a luminance ladder —
+     was measured and rejected: it forces the darkest series down to
+     4.5:1, where a thin line disappears against the panel.
+
+     Ratios are against --color-surface-1 (#10151c), the panel these
+     are drawn on, computed with WCAG 2.1 relative luminance.
+     ================================================================ */
+  --color-chart-1: #6ba8ff; /*  7.57:1 — primary measure (= --color-info) */
+  --color-chart-2: #38dfbd; /* 10.87:1 — comparison     (= --color-signal) */
+  --color-chart-3: #c08cf5; /*  7.25:1 — third series */
+  --color-chart-4: #f2b84b; /* 10.24:1 — fourth series  (= --color-warning) */
+
+  /* Stroke patterns — the non-colour channel that actually separates the
+     series. Series 1 is solid because it is the primary measure; the
+     rest are distinguishable at a 2px stroke without reading as noise.
+     Applied via `stroke-dasharray`. */
+  --chart-dash-1: none;
+  --chart-dash-2: 6 3;
+  --chart-dash-3: 2 3;
+  --chart-dash-4: 10 3 2 3;
+
+  /* Chart furniture. Grid lines are decorative and deliberately below
+     3:1 — a grid that competes with the data is a worse chart. Axis
+     labels carry text contrast duty and use --color-text-muted. */
+  --chart-grid: rgb(121 132 154 / 0.16);
+  --chart-axis: var(--color-text-muted);
+  --chart-track: var(--color-surface-3);
+
+  /* Area fills, composited over --color-surface-1 only. */
+  --chart-fill-1: rgb(107 168 255 / 0.16);
+  --chart-fill-2: rgb(56 223 189 / 0.14);
 }
 
 @media (min-width: 48rem) {
