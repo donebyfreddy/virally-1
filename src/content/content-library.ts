@@ -115,23 +115,181 @@ export const CONTENT_SORT_OPTIONS: readonly { id: string; label: string }[] = [
   { id: "duration", label: "Longest first" },
 ];
 
+/**
+ * Library copy.
+ *
+ * No eyebrow: the app has none, and "LIBRARY" above "Library" said the same word
+ * twice. The filter option sets live inside this object rather than as separate
+ * exports so that every string a user reads on this page is in one place, and the
+ * page derives its `FilterBar` definitions from them.
+ */
 export const libraryCopy = {
-  eyebrow: "LIBRARY",
-  title: "Source footage and everything generated from it.",
-  body: "Every asset the workspace holds: uploads, generated stills and clips, voiceovers, music and finished exports. Assets are reusable across campaigns.",
+  title: "Library",
+  body: "Every asset this workspace holds — uploaded footage, generated stills and clips, voiceovers, music and exports. Assets stay reusable across campaigns.",
+
+  gridLabel: "Media assets",
+  tableCaption: "Media assets in this workspace",
+  searchPlaceholder: "Search by filename",
+
+  /** KPI captions. Sentence case: they sit in ~130px and uppercase truncates. */
+  kpis: {
+    assets: "Assets",
+    stored: "Stored",
+    uploaded: "Uploaded",
+    generated: "Generated",
+    notReady: "Not ready",
+  },
+
+  /** Filter dimension names, shown in the control until one is applied. */
+  filters: {
+    kind: "Type",
+    campaign: "Campaign",
+    source: "Source",
+    state: "State",
+    sort: "Sort",
+  },
+
+  /**
+   * `output_origin` values. `provider` means a real generation provider produced
+   * the bytes; `mock` and `seeded_demo` mean they are stand-ins, and both are
+   * labelled as such wherever they appear.
+   */
+  sources: [
+    { id: "user_upload", label: "Uploaded" },
+    { id: "provider", label: "Generated" },
+    { id: "mock", label: "Demo output" },
+    { id: "seeded_demo", label: "Seeded demo" },
+  ],
+
+  /**
+   * `media_assets.upload_state`. A row exists before the bytes land, which is why
+   * this is a filter rather than an implementation detail: an interrupted upload
+   * is a thing the user needs to be able to find.
+   */
+  states: [
+    { id: "ready", label: "Ready" },
+    /**
+     * Not an `upload_state` value: it is the complement of `ready`, and it exists
+     * because the "Not ready" KPI counts every state except that one. Without it
+     * the tile's figure and the list it links to would disagree.
+     */
+    { id: "not_ready", label: "Not ready" },
+    { id: "processing", label: "Processing" },
+    { id: "uploaded", label: "Uploaded, not processed" },
+    { id: "pending", label: "Awaiting bytes" },
+    { id: "failed", label: "Failed" },
+  ],
+
+  /** Every one of these is a SQL `order by` on a column the list already selects. */
+  sorts: [
+    { id: "recent", label: "Newest first" },
+    { id: "oldest", label: "Oldest first" },
+    { id: "name", label: "Filename A–Z" },
+    { id: "size", label: "Largest first" },
+    { id: "duration", label: "Longest first" },
+  ],
+
+  /**
+   * The upload panel.
+   *
+   * It states that it does not accept files rather than rendering a drop target
+   * that silently swallows them: there is no upload path in the app yet (nothing
+   * calls the storage adapter's `putObject`), and a dashed rectangle that looks
+   * like a dropzone is a promise the product cannot keep.
+   */
+  upload: {
+    title: "Add assets",
+    body: "Assets arrive two ways: a campaign generates them, or you upload source footage and images.",
+    unavailable:
+      "Direct upload is part of the media phase and is not built yet, so this panel does not accept files. Until it is, generation is the only route into the library.",
+    campaignCta: "Create a campaign",
+    contentCta: "Open content",
+  },
+
+  /**
+   * What the "Stored" figure covers.
+   *
+   * `byte_size` is nullable, so the sum is a total of the rows that carry one. A
+   * partial sum presented as the library's size would be a quiet overstatement of
+   * how much is known.
+   */
+  sizeDetail: {
+    none: "Nothing stored yet",
+    all: "All sizes recorded",
+    partial: (sized: number, total: number) =>
+      `${sized.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} sized`,
+  },
+
+  notReadyDetail: {
+    some: "Bytes have not landed",
+    none: "Every asset is ready",
+  },
+
+  storageHeading: "Stored bytes by type",
+  storageEmpty: "No asset in this workspace has a recorded size yet.",
+
+  /**
+   * Shown on the well when there is no image to show.
+   *
+   * Audio, documents and any video without a poster frame have no still to
+   * render, and a grey rectangle implies one exists. The glyph names the format
+   * instead.
+   */
+  previewMissing: "No stored preview",
+
+  details: {
+    heading: "Asset details",
+    open: "Details",
+    close: "Close details",
+    format: "Format",
+    provenance: "Provenance",
+    storage: "Storage",
+    links: "Used in",
+    fields: {
+      kind: "Type",
+      mimeType: "MIME type",
+      dimensions: "Dimensions",
+      aspectRatio: "Aspect ratio",
+      duration: "Duration",
+      codec: "Codec",
+      size: "Size",
+      source: "Source",
+      provider: "Provider",
+      model: "Model",
+      cost: "Generation cost",
+      checksum: "Checksum",
+      uploadState: "Upload state",
+      scanState: "Scan state",
+      added: "Added",
+      updated: "Updated",
+      bucket: "Bucket",
+      path: "Object key",
+      campaign: "Campaign",
+      contentItem: "Content item",
+    },
+    notFound: {
+      title: "That asset is not in this workspace",
+      body: "It may have been deleted, or the link may point at another workspace's asset.",
+    },
+    noLinks: "Not attached to a campaign or content item.",
+  },
+
+  /** A field the row does not carry. Never rendered as 0 or as an empty string. */
+  unknown: "Not recorded",
+  demoLabel: "Demo",
 
   empty: {
-    title: "The library is empty.",
-    body: "Assets arrive two ways: you upload source footage and images, or a campaign generates them. Both land here and stay reusable.",
+    title: "The library is empty",
+    body: "Assets land here once a campaign generates them, or once source footage is uploaded.",
   },
 
   noMatches: {
-    title: "No assets match those filters.",
-    body: "Nothing in this workspace matches the current combination. Clearing the filters will show everything again.",
+    title: "No assets match those filters",
+    body: "Nothing in this workspace matches the current combination.",
   },
 
-  uploadUnavailable:
-    "Direct upload is part of the media phase and is not wired up yet. Assets currently arrive through campaign generation.",
+  truncated: (shown: number, total: number) =>
+    `Showing ${shown} of ${total.toLocaleString("en-US")}. Narrow the filters to find older assets.`,
 } as const;
 
 /** `asset_kind` enum values, in the order the filter offers them. */

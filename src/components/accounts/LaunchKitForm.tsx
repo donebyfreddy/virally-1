@@ -7,6 +7,7 @@ import { Input } from "@/components/primitives/Input";
 import { SegmentedControl } from "@/components/primitives/SegmentedControl";
 import { PLATFORM_LABELS, launchPage } from "@/content/accounts";
 import { prepareLaunchKit } from "@/lib/accounts/actions";
+import { cn } from "@/lib/cn";
 import type { Platform } from "@/types/database";
 
 const PLATFORMS = Object.keys(PLATFORM_LABELS) as Platform[];
@@ -25,6 +26,10 @@ const PLATFORMS = Object.keys(PLATFORM_LABELS) as Platform[];
  *
  * Every field carries a real label and a persistent hint. No instruction lives only
  * in a placeholder.
+ *
+ * The submit button keeps `size="lg"` (48px). §16 shrinks toolbar controls to 36px
+ * but leaves buttons inside forms at full height: this one commits capacity and
+ * spends a generation, and it is the only control on the surface that does.
  */
 export function LaunchKitForm({
   brands,
@@ -39,22 +44,21 @@ export function LaunchKitForm({
   const [submitting, setSubmitting] = useState(false);
 
   return (
-    <form action={prepareLaunchKit} onSubmit={() => setSubmitting(true)} className="mt-8">
+    <form action={prepareLaunchKit} onSubmit={() => setSubmitting(true)}>
       {/* The control is the source of truth for the visible choice; this carries it
           in the form body so the server does not depend on the control's internals. */}
       <input type="hidden" name="platform" value={platform} />
 
       <fieldset className="border-0 p-0">
-        <legend className="font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-secondary)]">
+        {/* Sentence case at reading weight. Uppercase in the product is reserved
+            for table column headers, never for a form label. */}
+        <legend className="text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
           {launchPage.fields.platform.label}
         </legend>
-        <p
-          id="platform-hint"
-          className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]"
-        >
+        <p className="mt-1 text-[length:var(--text-app-meta)] text-[color:var(--text-muted)]">
           {launchPage.fields.platform.hint}
         </p>
-        <div className="mt-3">
+        <div className="mt-[var(--space-3)]">
           <SegmentedControl
             label={launchPage.fields.platform.label}
             value={platform}
@@ -64,7 +68,7 @@ export function LaunchKitForm({
         </div>
       </fieldset>
 
-      <div className="mt-8 flex flex-col gap-6">
+      <div className="mt-[var(--space-6)] flex flex-col gap-[var(--space-5)]">
         <Field label={launchPage.fields.niche.label} hint={launchPage.fields.niche.hint}>
           {({ inputId, describedBy }) => (
             <Textarea
@@ -78,10 +82,18 @@ export function LaunchKitForm({
           )}
         </Field>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <Field label={launchPage.fields.displayLabel.label} hint={launchPage.fields.displayLabel.hint}>
+        <div className="grid grid-cols-1 gap-[var(--space-5)] md:grid-cols-2">
+          <Field
+            label={launchPage.fields.displayLabel.label}
+            hint={launchPage.fields.displayLabel.hint}
+          >
             {({ inputId, describedBy }) => (
-              <Input id={inputId} name="displayLabel" maxLength={120} aria-describedby={describedBy} />
+              <Input
+                id={inputId}
+                name="displayLabel"
+                maxLength={120}
+                aria-describedby={describedBy}
+              />
             )}
           </Field>
 
@@ -134,19 +146,35 @@ export function LaunchKitForm({
             hint={launchPage.fields.contentStyle.hint}
           >
             {({ inputId, describedBy }) => (
-              <Input id={inputId} name="contentStyle" maxLength={200} aria-describedby={describedBy} />
+              <Input
+                id={inputId}
+                name="contentStyle"
+                maxLength={200}
+                aria-describedby={describedBy}
+              />
             )}
           </Field>
 
           {brands.length > 0 ? (
-            <Field label="Brand" hint="Which brand this account belongs to.">
+            <Field label={launchPage.fields.brand.label} hint={launchPage.fields.brand.hint}>
               {({ inputId, describedBy }) => (
                 <select
                   id={inputId}
                   name="brandId"
                   defaultValue={defaultBrandId ?? ""}
                   aria-describedby={describedBy}
-                  className="min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface-1)] px-3 text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)] hover:border-[var(--color-border-strong)]"
+                  className={cn(
+                    // Matches `Input`'s 44px box so the two sit on one baseline in
+                    // the field grid.
+                    "min-h-11 w-full cursor-pointer rounded-[var(--radius-control)] border px-[var(--space-4)]",
+                    // `--border-control` is the 3:1 token: a form control edge has a
+                    // contrast duty a card seam does not.
+                    "border-[var(--border-control)] bg-[var(--surface-primary)]",
+                    "text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]",
+                    "transition-colors duration-[var(--dur-instant)]",
+                    "hover:border-[var(--border-strong)]",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+                  )}
                 >
                   {brands.map((brand) => (
                     <option key={brand.id} value={brand.id}>
@@ -160,8 +188,14 @@ export function LaunchKitForm({
         </div>
       </div>
 
-      <div className="mt-10 flex flex-wrap items-center gap-4">
-        <Button type="submit" variant="primary" size="lg" loading={submitting} loadingLabel={launchPage.submitting}>
+      <div className="mt-[var(--space-6)] flex flex-wrap items-center gap-[var(--space-3)]">
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          loading={submitting}
+          loadingLabel={launchPage.submitting}
+        >
           {launchPage.submit}
         </Button>
       </div>

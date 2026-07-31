@@ -78,15 +78,32 @@ export const calendarCopy = {
 
   count: (value: number) => (value === 1 ? "1 scheduled post" : `${value} scheduled posts`),
 
+  /**
+   * Two registers, deliberately, because the calendar has two empty shapes.
+   *
+   * `note` is the one that runs beside a grid. Month, week and day always render
+   * their dated structure — on a calendar the grid IS the value, since the user
+   * orients by the dates and clicks a day — so an empty range states the fact in
+   * a line above the grid rather than replacing it. One sentence: a paragraph
+   * there would be taller than the row of cells it sits on.
+   *
+   * `body` is the longer sentence for the agenda's compact empty state, which is
+   * the one view with no structure to preserve.
+   */
   empty: {
     title: (range: string) => `Nothing is scheduled in ${range}`,
     body: "Approved content gets a publish time and a destination account at the schedule stage of a campaign. Until then it waits in Content.",
+    note: "Content gets a publish time and a destination account at a campaign's schedule stage.",
   },
 
   noMatches: {
     title: (range: string) => `No posts in ${range} match those filters`,
     body: "Nothing in this range matches the current combination.",
   },
+
+  /** Shared by the empty state's buttons and the slim note's inline links. */
+  clearFilters: "Clear filters",
+  reviewContent: "Review content",
 
   /**
    * Stated rather than left as a missing affordance.

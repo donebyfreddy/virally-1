@@ -45,7 +45,8 @@ import {
   planSummaryCopy,
 } from "@/content/create";
 import { ProductionModePanel } from "./ProductionModePanel";
-import { CreditPanel, FigureList, FigureRow, PanelNote } from "./CreditPanel";
+import { CreditPanel } from "./CreditPanel";
+import { FigureList, FigureRow, PanelNote } from "@/components/app-ui/Figures";
 import { PRODUCTION_MODE_DEFAULTS, DEFAULT_PRODUCTION_MODE } from "@/lib/creative/modes";
 import {
   DEFAULT_GATE,
@@ -1181,7 +1182,7 @@ function StageCard({
 /* ==========================================================================
    CONTROLS
 
-   Local to this page rather than taken from `app-ui/Controls`: those controls
+   Local to this page rather than shared: a shared version of these controls
    are 56px tall with a wide-tracked uppercase label inside the border, which is
    the density and the type treatment the light system replaced. They should be
    rebuilt there; until they are, the create page carries its own.

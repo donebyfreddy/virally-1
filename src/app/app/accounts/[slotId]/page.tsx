@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { Eyebrow, Rule } from "@/components/primitives/Eyebrow";
-import { Badge } from "@/components/primitives/Badge";
-import { Button } from "@/components/primitives/Button";
-import { ButtonLink } from "@/components/primitives/ButtonLink";
-import { AuthMessage } from "@/components/auth/AuthMessage";
-import { LaunchKitExport } from "@/components/accounts/LaunchKitExport";
 import { and, eq } from "drizzle-orm";
+import { FileText } from "lucide-react";
 import { readSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { accountSlots } from "@/lib/db/schema";
 import { accountLaunchKits } from "@/lib/db/schema.fragment";
 import { resolveTenantContext } from "@/lib/tenant/context";
-import { signInPathFor } from "@/lib/auth/routes";
+import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
 import { can } from "@/lib/permissions";
 import { archiveAccountSlot, markAccountRegistered } from "@/lib/accounts/actions";
 import { slotPresentation } from "@/lib/accounts/slots";
+import { cn } from "@/lib/cn";
+import { AppPage, DashGrid, PageStack } from "@/components/app-ui/AppPage";
+import { PageHeader } from "@/components/app-ui/PageHeader";
+import { Card, CardBody, CardHeader } from "@/components/app-ui/Card";
+import { DataTable, type Column } from "@/components/app-ui/DataTable";
+import { EmptyState } from "@/components/app-ui/States";
+import { Button } from "@/components/primitives/Button";
+import { ButtonLink } from "@/components/primitives/ButtonLink";
+import { AuthMessage } from "@/components/auth/AuthMessage";
+import { HealthChip, PlatformMark } from "@/components/accounts/AccountSlotCard";
+import { LaunchKitExport } from "@/components/accounts/LaunchKitExport";
 import { PLATFORM_LABELS, launchKitPage, launchPage, slotActions } from "@/content/accounts";
 import type { Json } from "@/types/database";
 
@@ -25,9 +31,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-const SECTION_HEADING =
-  "font-utility text-[length:var(--text-utility)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-secondary)]";
 
 type PlannedPost = { position: number; title: string; pillar: string; hook: string };
 type ChecklistStep = { step: number; label: string; detail: string };
@@ -126,6 +129,11 @@ function renderPlainText(parts: {
  * The handoff statement sits above the material rather than below it: the user's first
  * question on this screen is "so does the account exist now", and the answer has to
  * arrive before the list of usernames implies one.
+ *
+ * The layout is deliberately asymmetric — a wide column of generated material against
+ * a narrow identity rail — rather than another grid of equal cards, because the two
+ * halves are read differently: the material is worked through in order, the rail is
+ * copied out field by field.
  */
 export default async function SlotDetailPage({
   params,
@@ -133,12 +141,12 @@ export default async function SlotDetailPage({
   params: Promise<{ slotId: string }>;
 }) {
   const session = await readSession();
-  if (session.status === "unconfigured") redirect("/app");
+  if (session.status === "unconfigured") redirect(PRODUCT_HOME);
   const { slotId } = await params;
   if (session.status === "anonymous") redirect(signInPathFor(`/app/accounts/${slotId}`));
 
   const resolution = await resolveTenantContext(session.user);
-  if (resolution.status !== "ok") redirect("/app");
+  if (resolution.status !== "ok") redirect(PRODUCT_HOME);
   const { context } = resolution;
 
   // Workspace-filtered explicitly: a slot id from another tenant must read as
@@ -163,10 +171,9 @@ export default async function SlotDetailPage({
   // TODO(schema-gap): `account_launch_kits` has no `visual_direction` or
   // `status` column in src/lib/db/schema.fragment.ts, even though the
   // already-converted src/lib/accounts/actions.ts writes both. This is a
-  // pre-existing gap in the Drizzle schema (not introduced by this
-  // conversion) — `visualDirection` is rendered as null below until the
-  // schema is extended to match; `status` was unused by this page and is
-  // simply not selected.
+  // pre-existing gap in the Drizzle schema — `visualDirection` is rendered as
+  // null below until the schema is extended to match; `status` was unused by
+  // this page and is simply not selected.
   let kit: {
     id: string;
     suggestedNames: string[];
@@ -233,305 +240,325 @@ export default async function SlotDetailPage({
       })
     : "";
 
+  const planColumns: readonly Column<PlannedPost>[] = [
+    {
+      id: "position",
+      header: "#",
+      numeric: true,
+      width: "3.5rem",
+      cell: (row) => String(row.position).padStart(2, "0"),
+    },
+    {
+      id: "title",
+      header: "Post",
+      cell: (row) => (
+        <span className="font-[var(--weight-strong)] text-[color:var(--text-primary)]">
+          {row.title}
+        </span>
+      ),
+    },
+    {
+      id: "pillar",
+      header: "Pillar",
+      hideBelow: "lg",
+      cell: (row) => row.pillar || "—",
+    },
+    {
+      id: "hook",
+      header: "Hook",
+      hideBelow: "md",
+      cell: (row) => row.hook || "—",
+    },
+  ];
+
+  const identityFields = [
+    { id: "bio", label: launchKitPage.sections.bio, value: kit?.bio ?? null },
+    {
+      id: "description",
+      label: launchKitPage.sections.description,
+      value: kit?.profileDescription ?? null,
+    },
+    { id: "voice", label: launchKitPage.sections.voice, value: kit?.brandVoice ?? null },
+    { id: "audience", label: launchKitPage.sections.audience, value: kit?.audience ?? null },
+    { id: "visual", label: launchKitPage.sections.visual, value: kit?.visualDirection ?? null },
+  ].filter((field) => field.value !== null);
+
   return (
-    <div className="mx-auto w-full max-w-[var(--container-wide)] px-[var(--gutter)] py-12">
-      <header>
-        <Eyebrow>{launchKitPage.eyebrow}</Eyebrow>
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-2">
-          <h1 className="font-display text-[length:var(--text-display-m)] leading-[var(--leading-display)] tracking-[var(--tracking-display)]">
-            {slot.displayLabel ?? PLATFORM_LABELS[slot.platform]}
-          </h1>
-          <span className="font-utility text-[length:var(--text-utility)] tabular-nums text-[color:var(--color-text-muted)]">
-            SLOT {String(slot.slotNumber).padStart(2, "0")}
-          </span>
-          <Badge tone={presentation.tone}>{presentation.label}</Badge>
-        </div>
-        <p className="mt-2 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]">
-          {PLATFORM_LABELS[slot.platform]}
-        </p>
-      </header>
+    <AppPage>
+      <PageStack>
+        <PageHeader
+          title={slot.displayLabel ?? PLATFORM_LABELS[slot.platform]}
+          meta={[PLATFORM_LABELS[slot.platform], launchKitPage.slotLabel(slot.slotNumber)]}
+          actions={
+            <>
+              {kit && (
+                <LaunchKitExport
+                  text={plainText}
+                  filename={`virally-launch-kit-slot-${slot.slotNumber}.txt`}
+                />
+              )}
+              <ButtonLink href="/app/accounts" variant="text">
+                {launchPage.back}
+              </ButtonLink>
+            </>
+          }
+        />
 
-      {/* The handoff, stated before any of the generated material. */}
-      {!slot.connectedAccountId ? (
-        <div className="mt-8 max-w-[46rem] border-l-2 border-[var(--color-action)] pl-4">
-          <p className="text-[length:var(--text-body-l)] text-[color:var(--color-text-primary)]">
-            {launchKitPage.handoffTitle}
-          </p>
-          <p className="prose-measure mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-            {launchKitPage.handoffBody}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="mt-6 flex max-w-[46rem] flex-col gap-3">
-        {kit?.origin === "mock" ? (
-          <AuthMessage
-            tone="notice"
-            title={launchKitPage.demoLabel}
-            body={launchKitPage.demoExplanation}
-          />
-        ) : null}
-        {slot.internalNotes ? <AuthMessage tone="error" body={slot.internalNotes} /> : null}
-      </div>
-
-      {!kit ? (
-        <>
-          <Rule className="my-10" />
-          <p className="prose-measure text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-            {launchKitPage.notPreparedYet}
-          </p>
-        </>
-      ) : (
-        <>
-          <div className="mt-8 flex flex-wrap gap-2">
-            <LaunchKitExport
-              text={plainText}
-              filename={`virally-launch-kit-slot-${slot.slotNumber}.txt`}
-            />
-          </div>
-
-          <Rule className="my-10" />
-
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_20rem]">
-            <div className="flex flex-col gap-10">
-              <section aria-labelledby="names">
-                <h2 id="names" className={SECTION_HEADING}>
-                  {launchKitPage.sections.names}
-                </h2>
-                <ul className="mt-3 flex flex-col gap-1">
-                  {kit.suggestedNames.map((name) => (
-                    <li key={name} className="text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                      {name}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section aria-labelledby="usernames">
-                <h2 id="usernames" className={SECTION_HEADING}>
-                  {launchKitPage.sections.usernames}
-                </h2>
-                {/* The availability caveat sits with the list, not in a footnote. */}
-                <p className="prose-measure mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-                  {launchKitPage.sections.usernamesNote}
-                </p>
-                <ul className="mt-3 flex flex-wrap gap-2">
-                  {kit.suggestedUsernames.map((username) => (
-                    <li
-                      key={username}
-                      className="rounded-[var(--radius-sm)] border border-[var(--color-border-hairline)] bg-[var(--color-surface-1)] px-3 py-1.5 font-utility text-[length:var(--text-utility)] text-[color:var(--color-text-secondary)]"
-                    >
-                      {username}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section aria-labelledby="pillars">
-                <h2 id="pillars" className={SECTION_HEADING}>
-                  {launchKitPage.sections.pillars}
-                </h2>
-                <ol className="mt-3 flex flex-col gap-1">
-                  {kit.contentPillars.map((pillar, index) => (
-                    <li key={pillar} className="flex gap-3 text-[length:var(--text-body-s)]">
-                      <span className="font-utility tabular-nums text-[color:var(--color-text-muted)]">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <span className="text-[color:var(--color-text-primary)]">{pillar}</span>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-
-              <section aria-labelledby="hooks">
-                <h2 id="hooks" className={SECTION_HEADING}>
-                  {launchKitPage.sections.hooks}
-                </h2>
-                <ol className="mt-3 flex flex-col gap-1">
-                  {kit.initialHooks.map((hook, index) => (
-                    <li key={`${index}-${hook}`} className="flex gap-3 text-[length:var(--text-body-s)]">
-                      <span className="font-utility tabular-nums text-[color:var(--color-text-muted)]">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <span className="text-[color:var(--color-text-secondary)]">{hook}</span>
-                    </li>
-                  ))}
-                </ol>
-              </section>
-
-              {posts.length > 0 ? (
-                <section aria-labelledby="plan">
-                  <h2 id="plan" className={SECTION_HEADING}>
-                    {launchKitPage.sections.plan}
-                  </h2>
-                  {/* A real table: thirty rows of two related values is tabular data,
-                      and a list of divs would not be navigable by a screen reader's
-                      table commands. */}
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full border-collapse text-left">
-                      <caption className="sr-only">
-                        The first thirty posts, with the content pillar and opening hook for each.
-                      </caption>
-                      <thead>
-                        <tr>
-                          <th
-                            scope="col"
-                            className="border-b border-[var(--color-border-hairline)] pb-2 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]"
-                          >
-                            #
-                          </th>
-                          <th
-                            scope="col"
-                            className="border-b border-[var(--color-border-hairline)] pb-2 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]"
-                          >
-                            Post
-                          </th>
-                          <th
-                            scope="col"
-                            className="border-b border-[var(--color-border-hairline)] pb-2 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-utility)] text-[color:var(--color-text-muted)]"
-                          >
-                            Hook
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {posts.map((post) => (
-                          <tr key={post.position}>
-                            <td className="border-b border-[var(--color-border-hairline)] py-2 pr-4 align-top font-utility text-[length:var(--text-utility)] tabular-nums text-[color:var(--color-text-muted)]">
-                              {String(post.position).padStart(2, "0")}
-                            </td>
-                            <td className="border-b border-[var(--color-border-hairline)] py-2 pr-4 align-top text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                              {post.title}
-                            </td>
-                            <td className="border-b border-[var(--color-border-hairline)] py-2 align-top text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-                              {post.hook}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              ) : null}
-
-              {checklist.length > 0 ? (
-                <section aria-labelledby="checklist">
-                  <h2 id="checklist" className={SECTION_HEADING}>
-                    {launchKitPage.sections.checklist}
-                  </h2>
-                  <p className="prose-measure mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-                    {launchKitPage.sections.checklistNote}
-                  </p>
-                  <ol className="mt-4 flex flex-col gap-4">
-                    {checklist.map((step) => (
-                      <li key={step.step} className="flex gap-4">
-                        <span className="font-utility text-[length:var(--text-utility)] tabular-nums text-[color:var(--color-text-muted)]">
-                          {String(step.step).padStart(2, "0")}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                            {step.label}
-                          </p>
-                          {step.detail ? (
-                            <p className="prose-measure mt-1 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-                              {step.detail}
-                            </p>
-                          ) : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
-              ) : null}
+        {/* State first, and the handoff with it. "Virally has prepared this
+            account" has to arrive before a list of usernames implies one exists. */}
+        <Card>
+          <CardBody>
+            <div className="flex flex-wrap items-center gap-[var(--space-3)]">
+              <PlatformMark platform={slot.platform} />
+              <HealthChip status={slot.status} />
             </div>
 
-            {/* Metadata rail. The asymmetric grid is deliberate — a metadata column
-                against wide content, rather than another equal-width card row. */}
-            <aside className="flex flex-col gap-8">
-              {kit.bio ? (
-                <section aria-labelledby="bio">
-                  <h2 id="bio" className={SECTION_HEADING}>
-                    {launchKitPage.sections.bio}
-                  </h2>
-                  <p className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                    {kit.bio}
-                  </p>
-                </section>
-              ) : null}
+            {!slot.connectedAccountId && (
+              <>
+                <p className="mt-[var(--space-4)] text-[length:var(--text-app-body)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
+                  {launchKitPage.handoffTitle}
+                </p>
+                <p className="mt-1 max-w-[70ch] text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]">
+                  {launchKitPage.handoffBody}
+                </p>
+              </>
+            )}
 
-              {kit.profileDescription ? (
-                <section aria-labelledby="description">
-                  <h2 id="description" className={SECTION_HEADING}>
-                    {launchKitPage.sections.description}
-                  </h2>
-                  <p className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-                    {kit.profileDescription}
-                  </p>
-                </section>
-              ) : null}
+            {presentation.requiredAction && (
+              <p className="mt-[var(--space-3)] max-w-[70ch] text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]">
+                {presentation.requiredAction}
+              </p>
+            )}
 
-              {kit.brandVoice ? (
-                <section aria-labelledby="voice">
-                  <h2 id="voice" className={SECTION_HEADING}>
-                    {launchKitPage.sections.voice}
-                  </h2>
-                  <p className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-                    {kit.brandVoice}
-                  </p>
-                </section>
-              ) : null}
+            {(mayConnect && slot.status === "launch_kit_ready") ||
+            (can(context.role, "accounts.disconnect") && !slot.connectedAccountId) ? (
+              <div className="mt-[var(--space-4)] flex flex-wrap gap-[var(--space-2)]">
+                {mayConnect && slot.status === "launch_kit_ready" && (
+                  <form action={markAccountRegistered}>
+                    <input type="hidden" name="slotId" value={slot.id} />
+                    <Button type="submit" variant="primary">
+                      {slotActions.markRegistered}
+                    </Button>
+                  </form>
+                )}
+                {can(context.role, "accounts.disconnect") && !slot.connectedAccountId && (
+                  <form action={archiveAccountSlot}>
+                    <input type="hidden" name="slotId" value={slot.id} />
+                    <Button type="submit" variant="text">
+                      {slotActions.archive}
+                    </Button>
+                  </form>
+                )}
+              </div>
+            ) : null}
+          </CardBody>
+        </Card>
 
-              {kit.audience ? (
-                <section aria-labelledby="audience">
-                  <h2 id="audience" className={SECTION_HEADING}>
-                    {launchKitPage.sections.audience}
-                  </h2>
-                  <p className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-                    {kit.audience}
-                  </p>
-                </section>
-              ) : null}
-
-              {kit.visualDirection ? (
-                <section aria-labelledby="visual">
-                  <h2 id="visual" className={SECTION_HEADING}>
-                    {launchKitPage.sections.visual}
-                  </h2>
-                  <p className="mt-2 text-[length:var(--text-body-s)] text-[color:var(--color-text-secondary)]">
-                    {kit.visualDirection}
-                  </p>
-                </section>
-              ) : null}
-            </aside>
+        {(kit?.origin === "mock" || slot.internalNotes) && (
+          <div className="flex flex-col gap-[var(--space-3)]">
+            {/* Generated material is labelled when it came from the mock provider,
+                the same rule every other generation surface follows. */}
+            {kit?.origin === "mock" && (
+              <AuthMessage
+                tone="notice"
+                title={launchKitPage.demoLabel}
+                body={launchKitPage.demoExplanation}
+              />
+            )}
+            {slot.internalNotes && <AuthMessage tone="error" body={slot.internalNotes} />}
           </div>
-        </>
-      )}
+        )}
 
-      <Rule className="my-10" />
+        {!kit ? (
+          <Card>
+            <EmptyState
+              bare
+              icon={<FileText size={20} strokeWidth={1.75} />}
+              title={launchKitPage.notPreparedTitle}
+              body={launchKitPage.notPreparedYet}
+              actions={
+                <ButtonLink href="/app/accounts" variant="secondary">
+                  {launchPage.back}
+                </ButtonLink>
+              }
+            />
+          </Card>
+        ) : (
+          <DashGrid>
+            <div className="flex min-w-0 flex-col gap-[var(--app-panel-gap)] lg:col-span-2 xl:col-span-8">
+              <Card>
+                <CardHeader as="h2" title={launchKitPage.sections.names} divided />
+                <CardBody>
+                  <ul className="flex flex-col gap-[var(--space-2)]">
+                    {kit.suggestedNames.map((name) => (
+                      <li
+                        key={name}
+                        className="text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]"
+                      >
+                        {name}
+                      </li>
+                    ))}
+                  </ul>
+                </CardBody>
+              </Card>
 
-      <div className="flex flex-wrap gap-3">
-        {mayConnect && slot.status === "launch_kit_ready" ? (
-          <form action={markAccountRegistered}>
-            <input type="hidden" name="slotId" value={slot.id} />
-            <Button type="submit" variant="primary">
-              {slotActions.markRegistered}
-            </Button>
-          </form>
-        ) : null}
+              <Card>
+                <CardHeader
+                  as="h2"
+                  title={launchKitPage.sections.usernames}
+                  // The availability caveat sits with the list, not in a footnote.
+                  description={launchKitPage.sections.usernamesNote}
+                  divided
+                />
+                <CardBody>
+                  <ul className="flex flex-wrap gap-[var(--space-2)]">
+                    {kit.suggestedUsernames.map((username) => (
+                      <li
+                        key={username}
+                        className={cn(
+                          "rounded-[var(--radius-chip)] bg-[var(--surface-muted)] px-2 py-1",
+                          "app-figure text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]",
+                        )}
+                      >
+                        {username}
+                      </li>
+                    ))}
+                  </ul>
+                </CardBody>
+              </Card>
 
-        {can(context.role, "accounts.disconnect") && !slot.connectedAccountId ? (
-          <form action={archiveAccountSlot}>
-            <input type="hidden" name="slotId" value={slot.id} />
-            <Button type="submit" variant="text">
-              {slotActions.archive}
-            </Button>
-          </form>
-        ) : null}
+              <Card>
+                <CardHeader as="h2" title={launchKitPage.sections.pillars} divided />
+                <CardBody>
+                  <NumberedList items={kit.contentPillars} tone="primary" />
+                </CardBody>
+              </Card>
 
-        <ButtonLink href="/app/accounts" variant="secondary">
-          {launchPage.back}
-        </ButtonLink>
-      </div>
-    </div>
+              <Card>
+                <CardHeader as="h2" title={launchKitPage.sections.hooks} divided />
+                <CardBody>
+                  <NumberedList items={kit.initialHooks} tone="secondary" />
+                </CardBody>
+              </Card>
+
+              {posts.length > 0 && (
+                <Card>
+                  <CardHeader as="h2" title={launchKitPage.sections.plan} divided />
+                  {/* A real table: thirty rows of related values is tabular data,
+                      and a list of divs would not be navigable by a screen
+                      reader's table commands. */}
+                  <CardBody pad="none">
+                    <DataTable
+                      caption={launchKitPage.planCaption}
+                      columns={planColumns}
+                      rows={posts}
+                      rowKey={(row) => String(row.position)}
+                    />
+                  </CardBody>
+                </Card>
+              )}
+
+              {checklist.length > 0 && (
+                <Card>
+                  <CardHeader
+                    as="h2"
+                    title={launchKitPage.sections.checklist}
+                    description={launchKitPage.sections.checklistNote}
+                    divided
+                  />
+                  <CardBody>
+                    <ol className="flex flex-col gap-[var(--space-4)]">
+                      {checklist.map((step) => (
+                        <li key={step.step} className="flex gap-[var(--space-3)]">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "app-figure flex size-6 shrink-0 items-center justify-center",
+                              "rounded-[var(--radius-full)] bg-[var(--surface-muted)]",
+                              "text-[length:var(--text-app-label)] font-[var(--weight-heading)]",
+                              "text-[color:var(--text-secondary)]",
+                            )}
+                          >
+                            {step.step}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
+                              {step.label}
+                            </p>
+                            {step.detail && (
+                              <p className="mt-1 max-w-[70ch] text-[length:var(--text-app-meta)] text-[color:var(--text-muted)]">
+                                {step.detail}
+                              </p>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </CardBody>
+                </Card>
+              )}
+            </div>
+
+            {/* Identity rail. One card holding the fields a user copies out, rather
+                than five cards of one paragraph each. */}
+            {identityFields.length > 0 && (
+              <div className="min-w-0 lg:col-span-2 xl:col-span-4">
+                <Card>
+                  <CardHeader as="h2" title={launchKitPage.sections.identity} divided />
+                  <CardBody>
+                    <dl className="flex flex-col gap-[var(--space-4)]">
+                      {identityFields.map((field) => (
+                        <div key={field.id}>
+                          <dt className="text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-muted)]">
+                            {field.label}
+                          </dt>
+                          <dd className="mt-1 text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
+                            {field.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </CardBody>
+                </Card>
+              </div>
+            )}
+          </DashGrid>
+        )}
+      </PageStack>
+    </AppPage>
+  );
+}
+
+/** An ordered list whose index is a tabular rail, not a browser bullet. */
+function NumberedList({
+  items,
+  tone,
+}: {
+  items: readonly string[];
+  tone: "primary" | "secondary";
+}) {
+  return (
+    <ol className="flex flex-col gap-[var(--space-2)]">
+      {items.map((item, index) => (
+        <li key={`${index}-${item}`} className="flex gap-[var(--space-3)]">
+          <span
+            aria-hidden="true"
+            className="app-figure shrink-0 text-[length:var(--text-app-label)] text-[color:var(--text-muted)]"
+          >
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <span
+            className={cn(
+              "text-[length:var(--text-app-cell)]",
+              tone === "primary"
+                ? "text-[color:var(--text-primary)]"
+                : "text-[color:var(--text-secondary)]",
+            )}
+          >
+            {item}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }

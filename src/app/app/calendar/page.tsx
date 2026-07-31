@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, asc, eq, gte, ilike, isNull, lt, or, sql, type SQL } from "drizzle-orm";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
@@ -216,6 +216,24 @@ export default async function CalendarPage({
   // thing being cleared.
   const clearHref = `/app/calendar?view=${view}&date=${isoDay(anchor)}`;
 
+  // Built once and placed by each view, so the sentence a user reads about an
+  // empty range does not depend on which view they are in.
+  const emptyNote =
+    entries.length === 0 ? (
+      <EmptyNote
+        title={
+          filtered
+            ? calendarCopy.noMatches.title(rangeLabel)
+            : calendarCopy.empty.title(rangeLabel)
+        }
+        // Omitted when filtered: the title already says what happened, and the
+        // link says what to do about it.
+        detail={filtered ? undefined : calendarCopy.empty.note}
+        actionHref={filtered ? clearHref : "/app/content"}
+        actionLabel={filtered ? calendarCopy.clearFilters : calendarCopy.reviewContent}
+      />
+    ) : null;
+
   return (
     <AppPage width="full">
       <PageStack>
@@ -283,31 +301,25 @@ export default async function CalendarPage({
             />
           </CardBody>
 
-          <CardBody pad="none">
-            {entries.length === 0 && (
-              <EmptyState
-                bare
-                icon={<CalendarDays size={20} strokeWidth={1.75} />}
-                title={
-                  filtered
-                    ? calendarCopy.noMatches.title(rangeLabel)
-                    : calendarCopy.empty.title(rangeLabel)
-                }
-                body={filtered ? calendarCopy.noMatches.body : calendarCopy.empty.body}
-                actions={
-                  filtered ? (
-                    <ButtonLink href={clearHref} variant="secondary">
-                      Clear filters
-                    </ButtonLink>
-                  ) : (
-                    <ButtonLink href="/app/content">Review content</ButtonLink>
-                  )
-                }
-              />
-            )}
+          {/* The empty range, stated in a line ABOVE the grid — never in place of
+              it. See `EmptyNote`. Month and week take it as a band here; the day
+              view carries the same node on its rail, so each view shows it once. */}
+          {entries.length === 0 && (view === "month" || view === "week") && (
+            // Untinted deliberately: the month grid's weekday header band is
+            // already `--surface-secondary`, and two tinted rows stacked behind
+            // one hairline read as a single two-line header rather than as a
+            // message above a table.
+            <CardBody pad="tight" className="border-b border-[var(--border-subtle)]">
+              {emptyNote}
+            </CardBody>
+          )}
 
-            {entries.length > 0 && (view === "month" || view === "week") && (
+          <CardBody pad="none">
+            {(view === "month" || view === "week") && (
               <>
+                {/* Rendered whether or not anything is scheduled. A dated grid
+                    with empty cells is still the thing the user came to read,
+                    and every cell is still a link into its day. */}
                 <div className="hidden md:block">
                   {view === "month" ? (
                     <MonthGrid
@@ -328,21 +340,54 @@ export default async function CalendarPage({
                   )}
                 </div>
 
-                <div className="p-[var(--app-panel-pad)] md:hidden">
-                  <AgendaList entries={entries} todayIso={todayIso} />
-                </div>
+                {/* Below `md` the grid is replaced by the agenda, which has no
+                    structure to preserve — so an empty range is just the band
+                    above, and nothing renders here. */}
+                {entries.length > 0 && (
+                  <div className="p-[var(--app-panel-pad)] md:hidden">
+                    <AgendaList entries={entries} todayIso={todayIso} />
+                  </div>
+                )}
               </>
             )}
 
-            {entries.length > 0 && view === "day" && (
+            {view === "day" && (
               <div className="p-[var(--app-panel-pad)]">
-                <DayTimeline entries={entries} rangeLabel={rangeLabel} />
+                <DayTimeline
+                  entries={entries}
+                  rangeLabel={rangeLabel}
+                  emptyNote={emptyNote}
+                />
               </div>
             )}
 
-            {entries.length > 0 && view === "agenda" && (
+            {view === "agenda" && (
               <div className="p-[var(--app-panel-pad)]">
-                <AgendaList entries={entries} todayIso={todayIso} />
+                {entries.length > 0 ? (
+                  <AgendaList entries={entries} todayIso={todayIso} />
+                ) : (
+                  /* The one view that may show a compact empty state: a linear
+                     list has no dated structure to keep. */
+                  <EmptyState
+                    bare
+                    icon={<CalendarDays size={20} strokeWidth={1.75} />}
+                    title={
+                      filtered
+                        ? calendarCopy.noMatches.title(rangeLabel)
+                        : calendarCopy.empty.title(rangeLabel)
+                    }
+                    body={filtered ? calendarCopy.noMatches.body : calendarCopy.empty.body}
+                    actions={
+                      filtered ? (
+                        <ButtonLink href={clearHref} variant="secondary">
+                          {calendarCopy.clearFilters}
+                        </ButtonLink>
+                      ) : (
+                        <ButtonLink href="/app/content">{calendarCopy.reviewContent}</ButtonLink>
+                      )
+                    }
+                  />
+                )}
               </div>
             )}
           </CardBody>
@@ -356,6 +401,59 @@ export default async function CalendarPage({
         </Card>
       </PageStack>
     </AppPage>
+  );
+}
+
+/**
+ * "Nothing scheduled here", as one line.
+ *
+ * A calendar's dated grid IS its value: the user orients by the dates and clicks
+ * a day, and both of those still work on an empty month. Replacing the grid with
+ * a centred empty state hides the page's primary interface behind a message —
+ * the softer version of the problem this redesign exists to fix.
+ *
+ * So the guidance shrinks to a line and moves out of the grid's way: bold fact,
+ * one sentence of cause, one inline link. Two lines at 1280px, three at 390px.
+ * The link is a `<Link>` rather than a button because it is inside a sentence,
+ * where WCAG 2.2's target-size minimum exempts it and a 36px button would be the
+ * loudest thing on an otherwise quiet row.
+ */
+function EmptyNote({
+  title,
+  detail,
+  actionHref,
+  actionLabel,
+}: {
+  title: string;
+  detail?: string;
+  actionHref: string;
+  actionLabel: string;
+}) {
+  return (
+    <p className="flex flex-wrap items-center gap-x-[var(--space-2)] gap-y-1 text-[length:var(--text-app-meta)]">
+      <CalendarDays
+        aria-hidden="true"
+        size={14}
+        strokeWidth={1.75}
+        className="shrink-0 text-[color:var(--text-muted)]"
+      />
+
+      <span className="font-[var(--weight-strong)] text-[color:var(--text-primary)]">{title}</span>
+
+      {detail && <span className="text-[color:var(--text-muted)]">{detail}</span>}
+
+      <Link
+        href={actionHref}
+        className={cn(
+          "inline-flex items-center gap-[var(--space-1)] rounded-[var(--radius-chip)]",
+          "font-[var(--weight-strong)] text-[color:var(--brand-ink)]",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+        )}
+      >
+        {actionLabel}
+        <ArrowRight aria-hidden="true" size={13} strokeWidth={2} />
+      </Link>
+    </p>
   );
 }
 

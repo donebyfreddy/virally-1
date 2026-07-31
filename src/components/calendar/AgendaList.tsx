@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { EntryCard, type CalendarEntry } from "./MonthGrid";
 import { calendarCopy } from "@/content/calendar";
@@ -99,9 +100,25 @@ export function DayTimeline({
   entries,
   /** The day itself, already formatted, for the section's accessible name. */
   rangeLabel,
+  /**
+   * The slim "nothing scheduled" line, rendered on the rail when the day is
+   * empty.
+   *
+   * The day view keeps its shape either way: an empty day renders the same
+   * two-column rail with an em-dash where a time would be, so the view the user
+   * navigated to is still the view they see. It is passed in rather than built
+   * here so the page owns the copy and the link, and it is rendered here rather
+   * than above the section so the rail's gutter width lives in one file — a
+   * second `sm:w-16` in the page is exactly how two columns drift apart.
+   *
+   * No hours are invented for the empty case. A rail of 24 fabricated slots
+   * would be structure the data does not have.
+   */
+  emptyNote,
 }: {
   entries: readonly CalendarEntry[];
   rangeLabel: string;
+  emptyNote?: ReactNode;
 }) {
   const slots = new Map<string, CalendarEntry[]>();
   for (const entry of entries) {
@@ -109,6 +126,27 @@ export function DayTimeline({
     const list = slots.get(key);
     if (list) list.push(entry);
     else slots.set(key, [entry]);
+  }
+
+  if (slots.size === 0) {
+    return (
+      <section
+        aria-label={calendarCopy.dayLabel(rangeLabel)}
+        // The same `min-h` a week-grid column reserves, so an empty day still
+        // occupies the day's space instead of collapsing the card to a caption.
+        // Shorter below `sm`, where 224px of reserved space is a third of the
+        // viewport.
+        className="flex min-h-[9rem] flex-col gap-[var(--space-2)] sm:min-h-[14rem] sm:flex-row sm:gap-[var(--space-4)]"
+      >
+        <p
+          aria-hidden="true"
+          className="app-figure shrink-0 text-[length:var(--text-app-label)] font-[var(--weight-strong)] text-[color:var(--text-muted)] sm:w-16 sm:pt-1.5"
+        >
+          —
+        </p>
+        <div className="min-w-0 flex-1 sm:pt-1.5">{emptyNote}</div>
+      </section>
+    );
   }
 
   return (

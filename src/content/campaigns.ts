@@ -20,6 +20,21 @@ export const STAGE_LABELS: Readonly<Record<string, string>> = {
   learn: "Learn",
 };
 
+/**
+ * `campaign_stages.state`, in words.
+ *
+ * Here rather than in the page for the same reason as `STAGE_LABELS`: "Running"
+ * has to be the word for `active` on every surface that reports a stage, and a
+ * switch statement inside one page is how two surfaces end up disagreeing.
+ */
+export const STAGE_STATE_LABELS: Readonly<Record<string, string>> = {
+  pending: "Pending",
+  active: "Running",
+  complete: "Complete",
+  blocked: "Blocked",
+  skipped: "Skipped",
+};
+
 /** The pipeline in order, so the detail page never hardcodes the sequence. */
 export const STAGE_ORDER = [
   "brief",
@@ -126,15 +141,28 @@ export const campaignTemplates: readonly CampaignTemplate[] = [
 ] as const;
 
 export const campaignDetailCopy = {
-  eyebrow: "CAMPAIGN",
+  // No eyebrow. The app has none — the top bar already says where the user is,
+  // and "CAMPAIGN" above the campaign's own name said the word twice.
   pipelineHeading: "Pipeline",
   pipelineHint:
     "Each stage is a separate, retryable step. A blocked stage always carries the reason it stopped.",
+  pipelineProgress: (complete: number, total: number) => `${complete} of ${total} complete`,
   outputHeading: "What this campaign has produced",
+  briefHeading: "Brief",
   conceptsHeading: "Concepts and hooks",
   activityHeading: "Recent activity",
   creditsHeading: "Credit usage",
   destinationsHeading: "Publishing destinations",
+
+  /** Why a campaign that has generated things can still show a zero cost. */
+  creditsNoteTitle: "How actual cost is derived",
+  creditsNote:
+    "Actual cost is the sum of completed generation runs, so it stays at zero until a generation that spends credits has finished.",
+
+  nextHeading: "Where content goes next",
+  nextBody:
+    "Approved variants are assigned to a connected account and a publish time at the schedule stage. Until then they sit in Content, reviewable and re-generatable.",
+  nextAction: "Open calendar",
 
   notFound: {
     title: "That campaign could not be found.",

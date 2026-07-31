@@ -1,8 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { cn } from "@/lib/cn";
 import { Card, CardBody, CardHeader } from "@/components/app-ui/Card";
+import { FigureList, FigureRow, PanelNote } from "@/components/app-ui/Figures";
 import { ErrorState } from "@/components/app-ui/States";
 import { creditCopy } from "@/content/create";
 import type { BalanceComparison } from "@/lib/creative/estimator";
@@ -92,85 +91,15 @@ export function CreditPanel({
 /* ==========================================================================
    SHARED PLAN-COLUMN PIECES
 
-   Exported from here rather than duplicated in Composer: the plan summary and
-   this card are two surfaces in the same column, and a figure row that differs
-   between them by a hair is exactly what makes a column of numbers look
-   assembled. Their eventual home is `components/app-ui` — `SummaryRail` there
-   is the same shape, but it still reads the legacy `--color-*` aliases and
-   wide-tracked uppercase titles, so this page no longer uses it.
+   `FigureList` / `FigureRow` / `PanelNote` now live in
+   `components/app-ui/Figures`, which is where they always belonged — the credit
+   card, the plan summary and a campaign's cost rail are the same shape, and a
+   figure row that differs between them by a hair is what makes a column of
+   numbers look assembled. They were defined here only because `app-ui` was
+   closed to new files at the time.
+
+   Re-exported so `Composer`, which imports them from this module, keeps
+   resolving. That re-export is the last thing to remove: a one-line change to
+   `Composer`'s import retires it.
    ======================================================================== */
 
-/** Wraps `FigureRow`s so the label/value pairing is real markup. */
-export function FigureList({ children }: { children: ReactNode }) {
-  return <dl className="flex flex-col">{children}</dl>;
-}
-
-/**
- * One label/value line. Values are right-aligned and tabular so a stack of them
- * scans as a column of figures rather than as ragged text.
- */
-export function FigureRow({
-  label,
-  value,
-  /** Leading glyph. Optional; the label carries the meaning. */
-  icon,
-  /** Draws a hairline above — used to separate a total from its components. */
-  divided = false,
-  /** Emphasises the value. For the one figure that matters most. */
-  emphasis = false,
-}: {
-  label: string;
-  value: ReactNode;
-  icon?: ReactNode;
-  divided?: boolean;
-  emphasis?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-baseline justify-between gap-[var(--space-4)] py-[var(--space-1)]",
-        divided &&
-          "mt-[var(--space-2)] border-t border-[var(--border-subtle)] pt-[var(--space-3)]",
-      )}
-    >
-      <dt className="flex min-w-0 items-center gap-[var(--space-2)] text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]">
-        {icon && (
-          <span aria-hidden="true" className="shrink-0 text-[color:var(--text-muted)]">
-            {icon}
-          </span>
-        )}
-        <span className="truncate">{label}</span>
-      </dt>
-
-      <dd
-        className={cn(
-          "app-figure shrink-0 text-[color:var(--text-primary)]",
-          emphasis
-            ? "text-[length:var(--text-metric-s)] font-[var(--weight-heading)]"
-            : "text-[length:var(--text-app-cell)]",
-        )}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-/**
- * A quiet explanatory block.
- *
- * Deliberately low-contrast: it is durable copy the user reads once, so it must
- * not compete with the live figures beside it.
- */
-export function PanelNote({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="rounded-[var(--radius-control)] bg-[var(--surface-secondary)] p-[var(--space-3)]">
-      <p className="text-[length:var(--text-app-meta)] font-[var(--weight-strong)] text-[color:var(--text-secondary)]">
-        {title}
-      </p>
-      <p className="mt-1 text-[length:var(--text-app-meta)] text-[color:var(--text-muted)]">
-        {body}
-      </p>
-    </div>
-  );
-}
