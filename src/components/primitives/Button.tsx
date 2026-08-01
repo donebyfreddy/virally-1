@@ -92,7 +92,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 /**
- * Teal, because a spinner means the machine is working — the signal colour's
+ * Violet, because a spinner means the machine is working — the signal colour's
  * one job. CSS-driven so it costs nothing and stops under reduced motion via
  * the global floor rule.
  */

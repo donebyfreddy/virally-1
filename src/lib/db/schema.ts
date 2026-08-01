@@ -441,6 +441,7 @@ export * from "./schema.fragment";
 // outputs, production modes, cost configuration. See schema.creative.ts for why
 // `provider_runs` is separate from `generation_runs`.
 export * from "./schema.creative";
+export * from "./schema.workflow";
 
 // Billing: plans, entitlements, credit reservations, top-up packages. The
 // balance is always `sum(credit_ledger.delta)` — see schema.billing.ts for why

@@ -12,6 +12,8 @@ import {
   LayoutGrid,
   Plus,
   Send,
+  Sparkles,
+  TrendingUp,
   UserPlus,
   Zap,
 } from "lucide-react";
@@ -23,6 +25,7 @@ import { cn } from "@/lib/cn";
 import { relativeDay } from "@/lib/format";
 import { readBalance } from "@/lib/creative/credits";
 import { tenantScope } from "@/lib/creative/scope";
+import { getStorageAdapter } from "@/lib/storage";
 import {
   WINDOW_DAYS,
   readActivity,
@@ -33,6 +36,9 @@ import {
   readPlatformTotals,
   readQueue,
   readTimeline,
+  readTopContent,
+  type PlatformTotal,
+  type TopContentItem,
   type Trend,
 } from "@/lib/overview/data";
 import { AppPage, DashGrid, PageStack } from "@/components/app-ui/AppPage";
@@ -68,6 +74,7 @@ export const dynamic = "force-dynamic";
 
 const QUEUE_LIMIT = 5;
 const ACTIVITY_LIMIT = 6;
+const THUMBNAIL_TTL_SECONDS = 60 * 10;
 
 const PLATFORM_LABELS = new Map(PLATFORM_OPTIONS.map((option) => [option.id, option.label]));
 
@@ -105,11 +112,12 @@ export default async function OverviewPage() {
   const { context } = resolution;
   const workspaceId = context.workspaceId;
 
-  const [kpis, timeline, platforms, queue, activity, funnel, generation, operations, credits] =
+  const [kpis, timeline, platforms, topContent, queue, activity, funnel, generation, operations, credits] =
     await Promise.all([
       readKpis(workspaceId),
       readTimeline(workspaceId),
       readPlatformTotals(workspaceId),
+      readTopContent(workspaceId),
       readQueue(workspaceId, QUEUE_LIMIT),
       readActivity(workspaceId, ACTIVITY_LIMIT),
       readFunnel(workspaceId),
@@ -120,6 +128,20 @@ export default async function OverviewPage() {
 
   const canCreate = can(context.role, "content.create");
 
+  const storage = getStorageAdapter();
+  const topContentCards = await Promise.all(
+    topContent.map(async (item) => ({
+      ...item,
+      thumbnailUrl: item.thumbnail
+        ? await storage.getSignedUrl(
+            item.thumbnail.bucket,
+            item.thumbnail.storagePath,
+            THUMBNAIL_TTL_SECONDS,
+          )
+        : null,
+    })),
+  );
+
   // "Nothing at all" is a stronger signal than "no campaigns": a workspace
   // mid-generation has content but no performance yet, and it should see the
   // pipeline panels rather than the first-run state.
@@ -127,6 +149,7 @@ export default async function OverviewPage() {
     funnel.contentItems === 0 && funnel.variants === 0 && operations.accountsTotal === 0;
   const hasPerformance = timeline.length > 0;
   const bestPlatform = platforms[0] ?? null;
+  const insights = buildInsights({ platforms, topContent, funnel, generation });
 
   const platformColumns: readonly Column<PlatformRow>[] = [
     {
@@ -457,6 +480,115 @@ export default async function OverviewPage() {
                     </ul>
                   ) : (
                     <QuietNote>No activity recorded yet.</QuietNote>
+                  )}
+                </CardBody>
+              </Card>
+            </DashGrid>
+
+            <DashGrid>
+              <Card className="min-w-0 overflow-hidden xl:col-span-5">
+                <CardHeader
+                  as="h2"
+                  title="AI performance insights"
+                  description="Recommendations generated from this workspace’s measured output."
+                  divided
+                  action={
+                    <span className="flex size-8 items-center justify-center rounded-[var(--radius-control)] bg-[var(--brand-soft)] text-[color:var(--brand-ink)]">
+                      <Sparkles aria-hidden="true" size={15} strokeWidth={1.9} />
+                    </span>
+                  }
+                />
+                <CardBody>
+                  {insights.length > 0 ? (
+                    <ul className="flex flex-col gap-[var(--space-4)]">
+                      {insights.map((insight, index) => (
+                        <li key={insight} className="flex items-start gap-[var(--space-3)]">
+                          <span
+                            aria-hidden="true"
+                            className="app-figure flex size-6 shrink-0 items-center justify-center rounded-[var(--radius-full)] bg-[var(--brand-soft)] text-[length:var(--text-app-label)] font-[var(--weight-heading)] text-[color:var(--brand-ink)]"
+                          >
+                            {index + 1}
+                          </span>
+                          <p className="text-[length:var(--text-app-cell)] leading-6 text-[color:var(--text-secondary)]">
+                            {insight}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <QuietNote>
+                      Publish and sync performance data to unlock recommendations grounded in real results.
+                    </QuietNote>
+                  )}
+                </CardBody>
+              </Card>
+
+              <Card className="min-w-0 overflow-hidden xl:col-span-7">
+                <CardHeader
+                  as="h2"
+                  title="Top-performing content"
+                  description={`Ranked by cumulative views in the last ${WINDOW_DAYS} days.`}
+                  divided
+                  action={<CardLink href="/app/content">All content</CardLink>}
+                />
+                <CardBody pad="none">
+                  {topContentCards.length > 0 ? (
+                    <ol className="divide-y divide-[var(--border-subtle)]">
+                      {topContentCards.map((item, index) => (
+                        <li key={`${item.id}:${item.platform}`}>
+                          <Link
+                            href={`/app/content/${item.id}`}
+                            className="group flex items-center gap-[var(--space-3)] px-[var(--app-panel-pad)] py-[var(--space-3)] transition-colors duration-[var(--dur-instant)] hover:bg-[var(--surface-secondary)]"
+                          >
+                            <span className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] bg-[linear-gradient(145deg,var(--brand-soft),var(--brand-soft-border))] text-[color:var(--brand-ink)]">
+                              {item.thumbnailUrl ? (
+                                // Signed tenant media may be served by different hosts per deployment,
+                                // so a fixed-size lazy image is safer than a global remote allowlist.
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={item.thumbnailUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  decoding="async"
+                                  width={48}
+                                  height={48}
+                                  className="size-full object-cover"
+                                />
+                              ) : (
+                                <TrendingUp aria-hidden="true" size={18} strokeWidth={1.8} />
+                              )}
+                              <span className="app-figure absolute bottom-1 right-1 rounded-[var(--radius-chip)] bg-[rgb(255_255_255_/_0.9)] px-1 text-[length:var(--text-app-label-xs)] font-[var(--weight-heading)] shadow-[var(--elevation-card)]">
+                                {index + 1}
+                              </span>
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)] group-hover:text-[color:var(--brand-primary)]">
+                                {item.title}
+                              </span>
+                              <span className="mt-0.5 block text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                                {PLATFORM_LABELS.get(item.platform) ?? item.platform}
+                              </span>
+                            </span>
+                            <span className="grid shrink-0 grid-cols-2 gap-[var(--space-4)] text-right sm:grid-cols-3">
+                              <MiniMetric label="Views" value={compactFormatter.format(item.views)} />
+                              <MiniMetric
+                                label="Retention"
+                                value={item.completionRateBp === null ? "—" : `${(item.completionRateBp / 100).toFixed(1)}%`}
+                              />
+                              <MiniMetric
+                                label="Engagement"
+                                value={item.engagementRateBp === null ? "—" : `${(item.engagementRateBp / 100).toFixed(1)}%`}
+                                className="hidden sm:block"
+                              />
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <div className="p-[var(--app-panel-pad)]">
+                      <QuietNote>No published content has synced performance data in this window.</QuietNote>
+                    </div>
                   )}
                 </CardBody>
               </Card>
@@ -885,4 +1017,74 @@ function QuietNote({ children }: { children: string }) {
       {children}
     </p>
   );
+}
+
+function MiniMetric({
+  label,
+  value,
+  className,
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <span className={className}>
+      <span className="app-label block">{label}</span>
+      <span className="app-figure mt-0.5 block text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
+        {value}
+      </span>
+    </span>
+  );
+}
+
+function buildInsights({
+  platforms,
+  topContent,
+  funnel,
+  generation,
+}: {
+  platforms: readonly PlatformTotal[];
+  topContent: readonly TopContentItem[];
+  funnel: { contentItems: number; variants: number; scheduled: number; published: number };
+  generation: { running: number; queued: number; failed: number };
+}): string[] {
+  const insights: string[] = [];
+  const leading = topContent[0];
+
+  if (leading?.completionRateBp !== null && leading?.completionRateBp !== undefined) {
+    insights.push(
+      `“${leading.title}” is the strongest retained post at ${(leading.completionRateBp / 100).toFixed(1)}%. Use its opening structure as the next hook benchmark.`,
+    );
+  }
+
+  const [first, second] = platforms;
+  if (first && second && first.posts > 0 && second.posts > 0) {
+    const firstPerPost = first.views / first.posts;
+    const secondPerPost = second.views / second.posts;
+    if (secondPerPost > 0) {
+      const lift = Math.round(((firstPerPost - secondPerPost) / secondPerPost) * 100);
+      if (lift > 0) {
+        insights.push(
+          `${PLATFORM_LABELS.get(first.platform) ?? first.platform} is delivering ${lift}% more views per post than ${PLATFORM_LABELS.get(second.platform) ?? second.platform}. Prioritize a fresh variant there.`,
+        );
+      }
+    }
+  }
+
+  if (funnel.contentItems > 0 && funnel.variants < funnel.contentItems * 2) {
+    insights.push(
+      `${funnel.contentItems} content items currently have ${funnel.variants} platform variants. Adapting the strongest items can expand distribution without starting a new campaign.`,
+    );
+  }
+
+  if (generation.failed > 0) {
+    insights.push(
+      `${generation.failed} generation ${generation.failed === 1 ? "job needs" : "jobs need"} attention before the current batch can move cleanly into review.`,
+    );
+  } else if (funnel.scheduled === 0 && funnel.published > 0) {
+    insights.push("Nothing is scheduled next. Reuse a proven format to protect publishing consistency.");
+  }
+
+  return insights.slice(0, 3);
 }

@@ -79,8 +79,8 @@ export function Card({
         toneClasses[tone],
         padClasses[pad],
         interactive && [
-          "transition-[box-shadow,border-color] duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-          "hover:border-[var(--border-strong)] hover:shadow-[var(--elevation-raised)]",
+          "transition-[transform,box-shadow,border-color] duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
+          "hover:-translate-y-px hover:border-[var(--brand-soft-border)] hover:shadow-[var(--elevation-raised)]",
           "focus-within:border-[var(--brand-primary)]",
         ],
         className,

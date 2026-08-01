@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   activityEvents,
@@ -7,10 +7,13 @@ import {
   campaignStages,
   connectedAccounts,
   contentItems,
+  contentMetrics,
   contentVariants,
   jobs,
+  mediaAssets,
   scheduledPosts,
 } from "@/lib/db/schema.fragment";
+import type { StorageBucket } from "@/lib/storage";
 import type { Platform } from "@/types/database";
 
 /**
@@ -52,6 +55,16 @@ export type OverviewKpis = {
 export type TimelinePoint = { day: string; views: number; engagements: number };
 
 export type PlatformTotal = { platform: Platform; views: number; posts: number };
+
+export type TopContentItem = {
+  id: string;
+  title: string;
+  platform: Platform;
+  views: number;
+  engagementRateBp: number | null;
+  completionRateBp: number | null;
+  thumbnail: { bucket: StorageBucket; storagePath: string } | null;
+};
 
 export type QueueItem = {
   id: string;
@@ -239,6 +252,79 @@ export async function readPlatformTotals(workspaceId: string): Promise<readonly 
   return rows.flatMap((row) =>
     row.platform === null ? [] : [{ ...row, platform: row.platform }],
   );
+}
+
+/**
+ * Strongest published content in the reporting window.
+ *
+ * Metrics are snapshots, so the latest/highest cumulative value is the useful
+ * reading for a post. Summing snapshots would count the same views repeatedly.
+ */
+export async function readTopContent(
+  workspaceId: string,
+  limit = 4,
+): Promise<readonly TopContentItem[]> {
+  const ranked = await db
+    .select({
+      id: contentItems.id,
+      title: contentItems.title,
+      platform: contentMetrics.platform,
+      views: sql<number>`coalesce(max(${contentMetrics.views}), 0)::int`,
+      engagementRateBp: sql<number | null>`max(${contentMetrics.engagementRateBp})::int`,
+      completionRateBp: sql<number | null>`max(${contentMetrics.completionRateBp})::int`,
+    })
+    .from(contentMetrics)
+    .innerJoin(
+      contentVariants,
+      eq(contentVariants.id, contentMetrics.contentVariantId),
+    )
+    .innerJoin(contentItems, eq(contentItems.id, contentVariants.contentItemId))
+    .where(
+      and(
+        eq(contentMetrics.workspaceId, workspaceId),
+        gte(contentMetrics.capturedAt, new Date(Date.now() - WINDOW_DAYS * 86_400_000)),
+        isNull(contentItems.deletedAt),
+      ),
+    )
+    .groupBy(contentItems.id, contentItems.title, contentMetrics.platform)
+    .orderBy(desc(sql`max(${contentMetrics.views})`))
+    .limit(limit);
+
+  if (ranked.length === 0) return [];
+
+  const thumbnailRows = await db
+    .select({
+      contentItemId: contentVariants.contentItemId,
+      bucket: mediaAssets.bucket,
+      storagePath: mediaAssets.storagePath,
+    })
+    .from(contentVariants)
+    .innerJoin(mediaAssets, eq(mediaAssets.id, contentVariants.thumbnailAssetId))
+    .where(
+      and(
+        inArray(
+          contentVariants.contentItemId,
+          ranked.map((item) => item.id),
+        ),
+        isNull(mediaAssets.deletedAt),
+      ),
+    )
+    .orderBy(asc(contentVariants.createdAt));
+
+  const thumbnails = new Map<string, { bucket: StorageBucket; storagePath: string }>();
+  for (const row of thumbnailRows) {
+    if (!thumbnails.has(row.contentItemId)) {
+      thumbnails.set(row.contentItemId, {
+        bucket: row.bucket,
+        storagePath: row.storagePath,
+      });
+    }
+  }
+
+  return ranked.map((item) => ({
+    ...item,
+    thumbnail: thumbnails.get(item.id) ?? null,
+  }));
 }
 
 /** The next posts due to publish. */

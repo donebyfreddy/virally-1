@@ -73,7 +73,7 @@ export function TopBar({
       <header
         className={cn(
           "sticky top-0 z-[var(--z-sticky)] flex min-h-[var(--app-topbar-height)] items-center gap-[var(--space-2)]",
-          "border-b border-[var(--border-default)] bg-[var(--surface-primary)]",
+          "border-b border-[var(--border-default)] bg-[rgb(255_255_255_/_0.92)] backdrop-blur-xl",
           "px-[var(--space-4)]",
         )}
       >

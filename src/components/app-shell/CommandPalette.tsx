@@ -2,9 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AtSign,
+  CalendarClock,
+  Film,
+  FolderKanban,
+  Image as ImageIcon,
+  LoaderCircle,
+  Search,
+  UserRound,
+} from "lucide-react";
 import type { MemberRole } from "@/types/database";
 import { cn } from "@/lib/cn";
 import { can } from "@/lib/permissions";
+import { searchGlobalEntities } from "@/lib/search/actions";
+import type { GlobalSearchResult, GlobalSearchResultKind } from "@/lib/search/types";
 import { navItems } from "@/content/app-navigation";
 import type { SwitcherOption } from "./Switcher";
 
@@ -16,18 +28,21 @@ import type { SwitcherOption } from "./Switcher";
  * so Tab must cycle within it; a dropdown does not, so trapping there would strip
  * the user's normal way out.
  *
- * Filtering is a plain substring match over a static command list. It is not a
- * database search — wiring live search here would fire a query per keystroke, and
- * the brief explicitly forbids that pattern. Entity search lands with the surfaces
- * that own the entities.
+ * Navigation commands filter immediately. A query of two or more characters also
+ * searches workspace entities through a debounced server action. That action
+ * re-checks the session, tenant and permission boundary; the client never receives
+ * a broad dataset to filter and never issues a request for every keystroke.
  */
 type Command = {
   id: string;
   label: string;
   hint: string;
   group: string;
+  kind?: GlobalSearchResultKind;
   run: () => void | Promise<void>;
 };
+
+type SearchState = "idle" | "loading" | "ready" | "error";
 
 export function CommandPalette({
   role,
@@ -46,10 +61,14 @@ export function CommandPalette({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [focusIndex, setFocusIndex] = useState(0);
+  const [entityResults, setEntityResults] = useState<GlobalSearchResult[]>([]);
+  const [searchState, setSearchState] = useState<SearchState>("idle");
   const [, startTransition] = useTransition();
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchTimerRef = useRef<number | null>(null);
+  const searchRequestRef = useRef(0);
   // Remembers what had focus so it can be restored on close.
   const restoreRef = useRef<HTMLElement | null>(null);
 
@@ -113,7 +132,7 @@ export function CommandPalette({
     return list;
   }, [role, router, workspaces, brands, onSwitchWorkspace, onSwitchBrand, startTransition]);
 
-  const filtered = useMemo(() => {
+  const filteredCommands = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return commands;
     return commands.filter(
@@ -124,6 +143,56 @@ export function CommandPalette({
     );
   }, [commands, query]);
 
+  const filtered = useMemo<Command[]>(() => {
+    const entityCommands = entityResults.map<Command>((result) => ({
+      id: result.id,
+      label: result.label,
+      hint: result.hint,
+      group: result.group,
+      kind: result.kind,
+      run: () => router.push(result.href),
+    }));
+    return [...entityCommands, ...filteredCommands];
+  }, [entityResults, filteredCommands, router]);
+
+  const cancelSearch = useCallback(() => {
+    if (searchTimerRef.current !== null) {
+      window.clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+    searchRequestRef.current += 1;
+  }, []);
+
+  const scheduleSearch = useCallback(
+    (value: string) => {
+      cancelSearch();
+      const trimmed = value.trim();
+
+      if (trimmed.length < 2) {
+        setEntityResults([]);
+        setSearchState("idle");
+        return;
+      }
+
+      const requestId = searchRequestRef.current;
+      setSearchState("loading");
+      searchTimerRef.current = window.setTimeout(async () => {
+        try {
+          const results = await searchGlobalEntities(trimmed);
+          if (searchRequestRef.current !== requestId) return;
+          setEntityResults(results);
+          setFocusIndex(0);
+          setSearchState("ready");
+        } catch {
+          if (searchRequestRef.current !== requestId) return;
+          setEntityResults([]);
+          setSearchState("error");
+        }
+      }, 240);
+    },
+    [cancelSearch],
+  );
+
   /**
    * Opening resets the query and remembers what had focus.
    *
@@ -132,19 +201,23 @@ export function CommandPalette({
    * React 19 flags as a cascading render — and the stale frame is visible.
    */
   const openPalette = useCallback(() => {
+    cancelSearch();
     restoreRef.current = document.activeElement as HTMLElement | null;
     setQuery("");
     setFocusIndex(0);
+    setEntityResults([]);
+    setSearchState("idle");
     setOpen(true);
     // After paint: the input is not in the document until this render commits.
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  }, [cancelSearch]);
 
   const close = useCallback(() => {
+    cancelSearch();
     setOpen(false);
     // Focus restoration is part of closing, not a consequence to be observed.
     restoreRef.current?.focus();
-  }, []);
+  }, [cancelSearch]);
 
   /**
    * Global shortcut. `metaKey || ctrlKey` covers both platforms without sniffing the
@@ -195,7 +268,7 @@ export function CommandPalette({
     // Focus trap: only Tab needs handling, and only to wrap at the ends.
     if (event.key === "Tab") {
       const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'input, [role="option"], button',
+        'input, [role="option"][tabindex="0"], button:not([tabindex="-1"])',
       );
       if (!focusable || focusable.length === 0) return;
       const first = focusable[0];
@@ -216,7 +289,10 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[var(--z-overlay)] flex items-start justify-center bg-[var(--color-scrim)] px-4 pt-[12vh]"
+      className={cn(
+        "fixed inset-0 z-[var(--z-overlay)] flex items-start justify-center bg-[var(--color-scrim)] px-3 pt-[8vh] sm:px-4 sm:pt-[12vh]",
+        "motion-safe:animate-[virally-app-fade-in_var(--dur-base)_var(--ease-enter)_backwards]",
+      )}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
@@ -228,14 +304,21 @@ export function CommandPalette({
         aria-label="Command palette"
         onKeyDown={onKeyDown}
         className={cn(
-          "w-full max-w-[36rem] overflow-hidden rounded-[var(--radius-lg)]",
-          "border border-[var(--color-border)] bg-[var(--color-surface-2)]",
-          "shadow-[var(--shadow-panel)]",
+          "w-full max-w-[40rem] overflow-hidden rounded-[var(--radius-card)]",
+          "border border-[var(--border-default)] bg-[var(--surface-primary)]",
+          "shadow-[var(--elevation-overlay)]",
+          "motion-safe:animate-[virally-app-pop-in_var(--dur-base)_var(--ease-settle)_backwards]",
         )}
       >
-        <div className="border-b border-[var(--color-border-hairline)] p-3">
+        <div className="flex items-center gap-[var(--space-3)] border-b border-[var(--border-subtle)] px-[var(--space-4)] py-[var(--space-3)]">
+          <Search
+            aria-hidden="true"
+            size={18}
+            strokeWidth={1.8}
+            className="shrink-0 text-[color:var(--text-muted)]"
+          />
           <label htmlFor="command-palette-input" className="sr-only">
-            Search commands
+            Search Virally
           </label>
           <input
             ref={inputRef}
@@ -245,34 +328,55 @@ export function CommandPalette({
             aria-expanded="true"
             aria-controls="command-palette-list"
             aria-autocomplete="list"
+            aria-activedescendant={
+              filtered[focusIndex] ? `command-option-${filtered[focusIndex].id}` : undefined
+            }
             autoComplete="off"
             value={query}
             onChange={(event) => {
-              setQuery(event.target.value);
+              const nextQuery = event.target.value;
+              setQuery(nextQuery);
               setFocusIndex(0);
+              scheduleSearch(nextQuery);
             }}
-            placeholder="Type a command"
+            placeholder="Search campaigns, content, assets, accounts and people"
             className={cn(
-              "min-h-11 w-full bg-transparent px-2",
-              "text-[length:var(--text-body)] text-[color:var(--color-text-primary)]",
-              "placeholder:text-[color:var(--color-text-muted)]",
+              "min-h-11 min-w-0 flex-1 bg-transparent",
+              "text-[length:var(--text-app-body)] text-[color:var(--text-primary)]",
+              "placeholder:text-[color:var(--text-muted)]",
               // The dialog border already frames the field; a second border here
               // would read as a nested box.
               "outline-none",
             )}
           />
+          {searchState === "loading" && (
+            <LoaderCircle
+              aria-label="Searching"
+              size={17}
+              strokeWidth={1.8}
+              className="shrink-0 text-[color:var(--brand-primary)] motion-safe:animate-spin"
+            />
+          )}
         </div>
 
         <ul
           id="command-palette-list"
           role="listbox"
-          aria-label="Commands"
-          className="max-h-[50vh] overflow-y-auto p-1"
+          aria-label="Commands and search results"
+          className="max-h-[62vh] overflow-y-auto p-[var(--space-2)]"
         >
-          {filtered.length === 0 && (
-            <li className="px-4 py-6 text-[length:var(--text-body-s)] text-[color:var(--color-text-muted)]">
-              No command matches “{query}”. Commands cover navigation, creating and
-              switching workspace or brand.
+          {searchState === "error" && (
+            <li
+              role="status"
+              className="rounded-[var(--radius-control)] bg-[var(--error-soft)] px-[var(--space-4)] py-[var(--space-3)] text-[length:var(--text-app-cell)] text-[color:var(--error)]"
+            >
+              Search is temporarily unavailable. Navigation commands still work.
+            </li>
+          )}
+
+          {filtered.length === 0 && searchState !== "loading" && searchState !== "error" && (
+            <li className="px-[var(--space-4)] py-[var(--space-8)] text-center text-[length:var(--text-app-cell)] text-[color:var(--text-muted)]">
+              No campaigns, content, assets, accounts, scheduled posts or team members match “{query}”.
             </li>
           )}
 
@@ -282,42 +386,81 @@ export function CommandPalette({
             return (
               <li key={command.id}>
                 {showGroup && (
-                  <p className="px-3 pb-1 pt-3 font-utility text-[length:var(--text-utility-xs)] uppercase tracking-[var(--tracking-eyebrow)] text-[color:var(--color-text-muted)]">
+                  <p className="app-label px-[var(--space-3)] pb-1 pt-[var(--space-3)]">
                     {command.group}
                   </p>
                 )}
-                <div
+                <button
+                  id={`command-option-${command.id}`}
+                  type="button"
                   role="option"
                   aria-selected={index === focusIndex}
-                  tabIndex={-1}
+                  tabIndex={index === focusIndex ? 0 : -1}
                   onMouseEnter={() => setFocusIndex(index)}
                   onClick={() => {
                     close();
                     void command.run();
                   }}
                   className={cn(
-                    "flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-[var(--radius-sm)] px-3 py-2",
-                    index === focusIndex && "bg-[var(--color-surface-3)]",
+                    "flex min-h-12 w-full cursor-pointer items-center gap-[var(--space-3)] rounded-[var(--radius-control)] px-[var(--space-3)] py-[var(--space-2)] text-left",
+                    "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--focus-ring)]",
+                    index === focusIndex && "bg-[var(--brand-soft)]",
                   )}
                 >
-                  <span className="text-[length:var(--text-body-s)] text-[color:var(--color-text-primary)]">
-                    {command.label}
+                  <ResultIcon kind={command.kind} active={index === focusIndex} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[length:var(--text-app-cell)] font-[var(--weight-strong)] text-[color:var(--text-primary)]">
+                      {command.label}
+                    </span>
+                    <span className="block truncate text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                      {command.hint}
+                    </span>
                   </span>
-                  <span className="truncate text-right text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
-                    {command.hint}
-                  </span>
-                </div>
+                </button>
               </li>
             );
           })}
         </ul>
 
-        <div className="flex items-center gap-4 border-t border-[var(--color-border-hairline)] px-4 py-2 font-utility text-[length:var(--text-utility-xs)] text-[color:var(--color-text-muted)]">
+        <div className="flex items-center gap-[var(--space-4)] border-t border-[var(--border-subtle)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-app-label-xs)] text-[color:var(--text-muted)]">
           <span>↑↓ move</span>
           <span>↵ run</span>
           <span>esc close</span>
         </div>
       </div>
     </div>
+  );
+}
+
+const RESULT_ICONS: Readonly<Record<GlobalSearchResultKind, typeof FolderKanban>> = {
+  campaign: FolderKanban,
+  content: Film,
+  asset: ImageIcon,
+  account: AtSign,
+  scheduled_post: CalendarClock,
+  team_member: UserRound,
+};
+
+function ResultIcon({
+  kind,
+  active,
+}: {
+  kind?: GlobalSearchResultKind;
+  active: boolean;
+}) {
+  const Icon = kind ? RESULT_ICONS[kind] : Search;
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-control)]",
+        active
+          ? "bg-[var(--surface-primary)] text-[color:var(--brand-primary)] shadow-[var(--elevation-card)]"
+          : "bg-[var(--surface-muted)] text-[color:var(--text-muted)]",
+      )}
+    >
+      <Icon size={15} strokeWidth={1.8} />
+    </span>
   );
 }

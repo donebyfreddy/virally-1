@@ -85,9 +85,17 @@ export const generationProviders = pgTable(
 /**
  * A model offered by a provider, with the cost basis used to quote it.
  *
+ * This table is AUTHORITATIVE at runtime. The in-code catalogues under
+ * src/lib/creative/{magnific,muapi}/catalog.ts are seed data and the fallback
+ * for an unseeded deployment — nothing reads them directly to make a routing
+ * decision. That indirection is the whole point: the brief requires models to
+ * be addable, retirable, renamable, repriceable and temporarily disable-able
+ * without a deploy, and a hardcoded array cannot do any of those.
+ *
  * `estimated_cents_per_unit` is our configured estimate, never a provider
- * quote — Magnific returns no price at submit time. `cost_basis` records which
- * it is, so the estimator UI cannot present a local guess as a vendor figure.
+ * quote — neither Magnific nor MuAPI returns a price at submit time, and MuAPI
+ * publishes none at all. `cost_basis` records which it is, so the estimator UI
+ * cannot present a local guess as a vendor figure.
  */
 export const generationModels = pgTable(
   "generation_models",
@@ -97,22 +105,84 @@ export const generationModels = pgTable(
       .notNull()
       .references(() => generationProviders.id, { onDelete: "cascade" }),
     label: text("label").notNull(),
+    description: text("description"),
+    /**
+     * What kind of file comes out.
+     *
+     * Retained alongside `capabilities` rather than derived from it because it
+     * is what storage, ingestion and Remotion key on, and because the two answer
+     * different questions — lip-sync consumes audio and emits video, so deriving
+     * kind from its inputs would file its output in the wrong bucket.
+     */
     kind: text("kind").notNull().$type<"image" | "video" | "audio">(),
+
+    /**
+     * The provider's own identifier or endpoint slug.
+     *
+     * Separate from `id` because they change independently: `id` is Virally's
+     * stable handle recorded on historic runs forever, while the provider's
+     * identifier can be renamed under us. Collapsing them would let a vendor
+     * rename rewrite history.
+     */
+    externalModelId: text("external_model_id").notNull().default(""),
     // Exact POST path at the provider. Stored rather than derived: provider
     // paths are not uniform and a constructed one would be wrong for most.
     endpointPath: text("endpoint_path").notNull(),
+
+    /**
+     * Routing capabilities, e.g. ["text-to-image", "image-to-image"].
+     *
+     * The routing dimension, where `kind` is the output dimension. A router that
+     * knows only the kind will send a text-to-image model reference images it
+     * silently ignores, and then bill for the result.
+     */
+    capabilities: jsonb("capabilities").notNull().default([]),
+    /** Input types the model accepts: text, image, video, audio. */
+    inputTypes: jsonb("input_types").notNull().default([]),
+    /** Reference images accepted. 0 means the model takes none. */
+    maxReferenceImages: integer("max_reference_images").notNull().default(0),
+
     // Durations the model accepts, in seconds. Empty array = continuous.
     allowedDurations: jsonb("allowed_durations").notNull().default([]),
     // Aspect ratios in Virally's vocabulary, not the provider's.
     supportedRatios: jsonb("supported_ratios").notNull().default([]),
-    estimatedCentsPerUnit: integer("estimated_cents_per_unit").notNull(),
+    supportedResolutions: jsonb("supported_resolutions").notNull().default([]),
+
+    supportsNegativePrompt: boolean("supports_negative_prompt").notNull().default(false),
+    supportsSeed: boolean("supports_seed").notNull().default(false),
+    supportsAudio: boolean("supports_audio").notNull().default(false),
+
+    /**
+     * Nullable, unlike the column it replaces.
+     *
+     * Null is "catalogued but unpriced", which is a real state for a MuAPI model
+     * nobody has costed yet. An unpriced model is never routed to — the
+     * estimator cannot quote it honestly and a credit reservation would have
+     * nothing to reserve against. Defaulting it to 0 would make free-to-run the
+     * indistinguishable neighbour of not-yet-priced.
+     */
+    estimatedCentsPerUnit: integer("estimated_cents_per_unit"),
     costBasis: text("cost_basis")
       .notNull()
       .default("configured_table")
       .$type<"provider_quote" | "configured_table">(),
     // Production modes this model may serve.
     modes: jsonb("modes").notNull().default([]),
+
     enabled: boolean("enabled").notNull().default(true),
+    /**
+     * Set when the provider retires the model.
+     *
+     * Distinct from `enabled = false`, which is an operator switching something
+     * off during an incident and expects to switch it back on. A deprecated
+     * model stays catalogued so historic runs still resolve a name, but nothing
+     * new routes to it.
+     */
+    deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
+
+    /** Provider-specific quirks the adapter needs: payload field names, modes. */
+    metadata: jsonb("metadata").notNull().default({}),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -122,8 +192,128 @@ export const generationModels = pgTable(
       "generation_models_cost_basis_check",
       sql`cost_basis in ('provider_quote', 'configured_table')`,
     ),
-    costCheck: check("generation_models_cost_check", sql`estimated_cents_per_unit >= 0`),
+    costCheck: check(
+      "generation_models_cost_check",
+      sql`estimated_cents_per_unit is null or estimated_cents_per_unit >= 0`,
+    ),
+    referenceImagesCheck: check(
+      "generation_models_max_reference_images_check",
+      sql`max_reference_images >= 0`,
+    ),
+    // A model with no capability is unroutable and almost certainly a bad seed.
+    // Rejected at write time rather than silently ignored at read time.
+    capabilitiesCheck: check(
+      "generation_models_capabilities_check",
+      sql`jsonb_typeof(capabilities) = 'array' and jsonb_array_length(capabilities) > 0`,
+    ),
     providerKindIdx: index("generation_models_provider_kind_idx").on(table.providerId, table.kind),
+    // Drives the catalogue loader, which reads only routable models.
+    routableIdx: index("generation_models_routable_idx")
+      .on(table.providerId)
+      .where(sql`enabled and deprecated_at is null and estimated_cents_per_unit is not null`),
+  }),
+);
+
+/**
+ * History of catalogue changes, one row per observed revision of a model.
+ *
+ * Exists because the brief requires the application to survive models being
+ * renamed, repriced, deprecated or capability-restricted, and "survive" means
+ * more than not crashing. A run from March quoted a price that no longer exists;
+ * reconciling its provider invoice, or explaining a credit charge to the user
+ * who disputes it, needs the figures as they stood at submit time. Reading the
+ * current row would answer with today's price and quietly rewrite history.
+ *
+ * Append-only. Nothing updates a row here; a change writes a new version.
+ */
+export const generationModelVersions = pgTable(
+  "generation_model_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    modelId: text("model_id")
+      .notNull()
+      .references(() => generationModels.id, { onDelete: "cascade" }),
+    /** Monotonic per model, starting at 1. */
+    version: integer("version").notNull(),
+
+    /** Full snapshot of the model row as it stood at this version. */
+    snapshot: jsonb("snapshot").notNull(),
+    /** Denormalised for the common query: what did this cost at the time. */
+    estimatedCentsPerUnit: integer("estimated_cents_per_unit"),
+    externalModelId: text("external_model_id").notNull(),
+
+    /** Why the version was cut: seeded, repriced, renamed, deprecated, … */
+    changeReason: text("change_reason").notNull(),
+    /** Operator or process that made the change. Null for an automated seed. */
+    changedBy: text("changed_by"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    versionCheck: check("generation_model_versions_version_check", sql`version >= 1`),
+    costCheck: check(
+      "generation_model_versions_cost_check",
+      sql`estimated_cents_per_unit is null or estimated_cents_per_unit >= 0`,
+    ),
+    modelVersionUnique: unique("generation_model_versions_model_version_unique").on(
+      table.modelId,
+      table.version,
+    ),
+    modelIdx: index("generation_model_versions_model_idx").on(
+      table.modelId,
+      desc(table.createdAt),
+    ),
+  }),
+);
+
+/**
+ * Outbound request budget, per provider and optionally per capability.
+ *
+ * Replaces the single `generation_providers.rate_limit_per_minute` figure,
+ * which stays as the provider-wide default. One number per provider is not
+ * enough: vendors meter video far more tightly than images, so a limit set low
+ * enough to keep video inside quota needlessly throttles image generation, and
+ * one set high enough for images gets video 429ed.
+ *
+ * These are limits VIRALLY imposes on itself. They are not a claim about the
+ * provider's published quota, and the worker treats an actual 429 as
+ * authoritative regardless of what this table says.
+ */
+export const providerRateLimits = pgTable(
+  "provider_rate_limits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => generationProviders.id, { onDelete: "cascade" }),
+    /** Null applies to every capability — the provider-wide row. */
+    capability: text("capability"),
+
+    requestsPerMinute: integer("requests_per_minute").notNull(),
+    /** In-flight tasks Virally will hold open at once. */
+    maxConcurrent: integer("max_concurrent").notNull().default(8),
+    /** Per-workspace ceiling, so one tenant cannot consume the whole budget. */
+    maxConcurrentPerWorkspace: integer("max_concurrent_per_workspace").notNull().default(3),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    rpmCheck: check("provider_rate_limits_rpm_check", sql`requests_per_minute > 0`),
+    concurrencyCheck: check(
+      "provider_rate_limits_concurrency_check",
+      sql`max_concurrent > 0 and max_concurrent_per_workspace > 0 and max_concurrent_per_workspace <= max_concurrent`,
+    ),
+    // Two partial uniques rather than one composite: a plain UNIQUE over a
+    // nullable column does not constrain the provider-wide rows at all, because
+    // NULL is never equal to NULL in Postgres. Same reasoning as
+    // cost_configuration below.
+    providerWideUnique: uniqueIndex("provider_rate_limits_provider_wide_idx")
+      .on(table.providerId)
+      .where(sql`capability is null`),
+    providerCapabilityUnique: uniqueIndex("provider_rate_limits_capability_idx")
+      .on(table.providerId, table.capability)
+      .where(sql`capability is not null`),
   }),
 );
 
@@ -171,6 +361,21 @@ export const providerRuns = pgTable(
 
     generationType: text("generation_type").notNull().$type<"image" | "video" | "audio">(),
 
+    /**
+     * The capability this run served, e.g. "image-to-video".
+     *
+     * Recorded alongside `generation_type` rather than derived from it, because
+     * the two are not the same question and the mapping only goes one way.
+     * Lip-sync and text-to-video are both `video`, so a history filtered on
+     * type alone puts them in one list — and a user who generated a talking
+     * head cannot find it among their b-roll.
+     *
+     * Nullable: runs created before this column existed genuinely do not know,
+     * and backfilling a guess would be inventing history. A null reads as
+     * "unspecified" in the UI rather than as a wrong answer.
+     */
+    capability: text("capability"),
+
     // --- What was asked for -------------------------------------------------
     inputPrompt: text("input_prompt").notNull(),
     negativePrompt: text("negative_prompt"),
@@ -182,15 +387,28 @@ export const providerRuns = pgTable(
 
     // --- What happened ------------------------------------------------------
     externalTaskId: text("external_task_id"),
+    /**
+     * `ProviderRunState` — a superset of the states a provider can report.
+     *
+     * Three of these are Virally's own and no adapter may return them:
+     * `waiting_external` (submitted, provider has not started), `validating`
+     * (bytes downloaded, checks not yet passed) and `dead_letter` (retries
+     * exhausted). They describe where the ORCHESTRATOR is, which is information
+     * no provider has. Keeping them out of `GenerationTaskState` is what stops
+     * an adapter from claiming a run is dead-lettered.
+     */
     state: text("state").notNull().default("planned").$type<
       | "planned"
       | "queued"
       | "submitted"
+      | "waiting_external"
       | "generating"
       | "downloading"
+      | "validating"
       | "completed"
       | "failed"
       | "cancelled"
+      | "dead_letter"
     >(),
     // 0-100 when the provider reports it. Null means genuinely unknown, and the
     // UI must render an indeterminate indicator rather than invent a number.
@@ -232,7 +450,7 @@ export const providerRuns = pgTable(
   (table) => ({
     stateCheck: check(
       "provider_runs_state_check",
-      sql`state in ('planned', 'queued', 'submitted', 'generating', 'downloading', 'completed', 'failed', 'cancelled')`,
+      sql`state in ('planned', 'queued', 'submitted', 'waiting_external', 'generating', 'downloading', 'validating', 'completed', 'failed', 'cancelled', 'dead_letter')`,
     ),
     typeCheck: check(
       "provider_runs_generation_type_check",
@@ -256,7 +474,7 @@ export const providerRuns = pgTable(
     // reservation sweeper cannot tell which reservations are safe to release.
     completedAtCheck: check(
       "provider_runs_completed_at_check",
-      sql`(state in ('completed', 'failed', 'cancelled')) = (completed_at is not null)`,
+      sql`(state in ('completed', 'failed', 'cancelled', 'dead_letter')) = (completed_at is not null)`,
     ),
     // The idempotency guarantee. A repeated submit collides here instead of
     // creating a second billable provider task.

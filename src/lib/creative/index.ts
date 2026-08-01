@@ -34,13 +34,45 @@ export type {
   VideoGenerationInput,
 } from "./types";
 
+export type { ProviderRunState } from "./types";
+
 export {
   ProviderNotConfiguredError,
   ProviderUnsupportedError,
+  TERMINAL_RUN_STATES,
   TERMINAL_TASK_STATES,
+  isTerminalRunState,
   isTerminalState,
   originFor,
 } from "./types";
+
+export {
+  GENERATION_CAPABILITIES,
+  CONSENT_GATED_CAPABILITIES,
+  capabilitiesForKind,
+  checkModelFit,
+  isGenerationCapability,
+  isRoutable,
+  kindForCapability,
+  quantiseDuration,
+  requiredInputsFor,
+  requiresConsent,
+  supportsCapability,
+} from "./capabilities";
+export type {
+  GenerationCapability,
+  GenerationInputType,
+  GenerationModel,
+} from "./capabilities";
+
+export {
+  findModel,
+  findModelForDisplay,
+  invalidateCatalogCache,
+  listModels,
+  loadCatalog,
+  seedCatalog,
+} from "./catalog";
 
 export {
   CENTS_PER_PRODUCTION_CREDIT,
@@ -56,9 +88,17 @@ export type { RouteDecision, RouteRequest } from "./router";
 
 export { MockCreativeProvider, DEMO_OUTPUT_LABEL, DEMO_OUTPUT_EXPLANATION } from "./mock";
 export { MagnificProvider } from "./magnific/provider";
+export { MuApiProvider } from "./muapi/provider";
 
-export { describeCreativeEnv, isMagnificConfigured, isMagnificWebhookConfigured } from "./env";
-export type { CreativeEnvStatus } from "./env";
+export {
+  describeCreativeEnv,
+  describeProviderEnv,
+  isAnyProviderConfigured,
+  isMagnificConfigured,
+  isMagnificWebhookConfigured,
+  isMuApiConfigured,
+} from "./env";
+export type { CreativeEnvStatus, ProviderEnvStatus } from "./env";
 
 export { tenantScope } from "./scope";
 export type { TenantScope } from "./scope";

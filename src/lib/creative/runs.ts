@@ -6,7 +6,7 @@ import { assertScope } from "./scope";
 import type {
   GenerationKind,
   GenerationTask,
-  GenerationTaskState,
+  ProviderRunState,
   GenerationTaskStatus,
 } from "./types";
 import { isTerminalState } from "./types";
@@ -35,6 +35,8 @@ export type CreateRunInput = {
   providerId: string;
   model: string;
   generationType: GenerationKind;
+  /** The capability served, e.g. "image-to-video". Null when unspecified. */
+  capability?: string | null;
   prompt: string;
   negativePrompt?: string | null;
   inputAssetIds?: readonly string[];
@@ -48,7 +50,7 @@ export type CreateRunInput = {
 
 export type ProviderRunRow = {
   id: string;
-  state: GenerationTaskState;
+  state: ProviderRunState;
   externalTaskId: string | null;
   attemptCount: number;
   model: string;
@@ -83,6 +85,7 @@ export async function createOrGetRun(
       providerId: input.providerId,
       model: input.model,
       generationType: input.generationType,
+      capability: input.capability ?? null,
       inputPrompt: input.prompt,
       negativePrompt: input.negativePrompt ?? null,
       inputAssetIds: [...(input.inputAssetIds ?? [])],
@@ -332,7 +335,7 @@ const RUN_COLUMNS = {
 
 function toRow(row: {
   id: string;
-  state: GenerationTaskState;
+  state: ProviderRunState;
   externalTaskId: string | null;
   attemptCount: number;
   model: string;

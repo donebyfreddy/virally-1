@@ -1,4 +1,9 @@
 import type { AspectRatio } from "@/types/database";
+import type {
+  GenerationCapability,
+  GenerationInputType,
+  GenerationModel,
+} from "../capabilities";
 import type { GenerationQuality, ProductionMode } from "../types";
 
 /**
@@ -188,6 +193,79 @@ export const MAGNIFIC_MODELS: readonly MagnificModel[] = [
 export function findModel(id: string): MagnificModel | null {
   return MAGNIFIC_MODELS.find((model) => model.id === id) ?? null;
 }
+
+// --- Normalized view ----------------------------------------------------------
+
+/**
+ * The same models in the cross-provider `GenerationModel` shape.
+ *
+ * Derived rather than hand-maintained as a second list, so `MAGNIFIC_MODELS`
+ * stays the single place a Magnific model is described and the two cannot drift.
+ * This is what the seeder writes into `generation_models` and what
+ * `catalog.ts` falls back to when that table is unreadable or unseeded.
+ *
+ * The capability mapping is the one piece of real judgement here. Magnific's
+ * `kind` does not distinguish text-to-image from image-to-image, but its image
+ * endpoints all accept optional style and structure references, and its video
+ * endpoints are all `/image-to-video/*` while also accepting a bare prompt.
+ * So the image models carry both image capabilities and the video models carry
+ * both video capabilities — which is accurate, and is why the router must check
+ * `maxReferenceImages` rather than inferring reference support from capability.
+ */
+const IMAGE_CAPABILITIES = ["text-to-image", "image-to-image"] as const;
+const VIDEO_CAPABILITIES = ["text-to-video", "image-to-video"] as const;
+
+function normalise(model: MagnificModel): GenerationModel {
+  const isImage = model.kind === "image";
+  const isVideo = model.kind === "video";
+  const isMusic = model.id.includes("music");
+
+  let capabilities: readonly GenerationCapability[];
+  if (isImage) capabilities = IMAGE_CAPABILITIES;
+  else if (isVideo) capabilities = VIDEO_CAPABILITIES;
+  else capabilities = [isMusic ? "music" : "sound-effect"];
+
+  const inputTypes: GenerationInputType[] = ["text"];
+  if (isImage || isVideo) inputTypes.push("image");
+
+  let maxReferenceImages: number | undefined;
+  if (isImage) maxReferenceImages = 2;
+  else if (isVideo) maxReferenceImages = 1;
+
+  let supportedAspectRatios: readonly AspectRatio[] = [];
+  if (isImage) supportedAspectRatios = Object.keys(IMAGE_RATIO) as AspectRatio[];
+  else if (isVideo) supportedAspectRatios = Object.keys(VIDEO_RATIO) as AspectRatio[];
+
+  return {
+    id: model.id,
+    providerId: "magnific",
+    // Magnific addresses models by endpoint path, so the path IS the external
+    // identifier. Recorded in both fields rather than left blank, because a
+    // reconciliation query joining our runs to a Magnific invoice matches on it.
+    externalModelId: model.path,
+    name: model.label,
+    capabilities,
+    inputTypes,
+    // Image models take a style reference and a structure reference; video
+    // models take a single first frame.
+    maxReferenceImages,
+    supportedAspectRatios,
+    supportedDurations: model.allowedDurations,
+    supportedResolutions: isImage ? ["1k", "2k", "4k"] : [],
+    // Magnific exposes neither on the endpoints Virally routes to. Claiming
+    // otherwise would render form controls whose values are silently discarded.
+    supportsNegativePrompt: false,
+    supportsSeed: false,
+    supportsAudio: false,
+    modes: model.modes,
+    estimatedCentsPerUnit: model.estimatedCentsPerUnit,
+    enabled: true,
+    metadata: { path: model.path },
+  };
+}
+
+export const MAGNIFIC_MODELS_NORMALISED: readonly GenerationModel[] =
+  MAGNIFIC_MODELS.map(normalise);
 
 /**
  * Picks a model for a request.

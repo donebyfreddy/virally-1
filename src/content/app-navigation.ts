@@ -38,6 +38,7 @@ export type NavId =
   | "calendar"
   | "accounts"
   | "analytics"
+  | "generate"
   | "library"
   | "experiments"
   | "team"
@@ -52,6 +53,7 @@ export const navItems: readonly NavItem[] = [
   { id: "calendar", label: "Calendar", href: "/app/calendar", hint: "Scheduled and published posts", phase: 8, group: "operate" },
   { id: "accounts", label: "Accounts", href: "/app/accounts", hint: "Authorised social accounts", phase: 7, group: "operate" },
   { id: "analytics", label: "Analytics", href: "/app/analytics", hint: "Reach, retention and cost", requires: "analytics.view", phase: 9, group: "operate" },
+  { id: "generate", label: "Generate", href: "/app/generate", hint: "Images, video, audio and lip sync", requires: "content.create", phase: 6, group: "operate" },
   { id: "library", label: "Library", href: "/app/library", hint: "Source and generated media", phase: 6, group: "operate" },
   { id: "experiments", label: "Experiments", href: "/app/experiments", hint: "Compare hooks, thumbnails and timing", phase: 10, group: "operate" },
 
@@ -74,7 +76,7 @@ export const createAction = {
 } as const;
 
 export const shellCopy = {
-  searchPlaceholder: "Search campaigns, content, accounts",
+  searchPlaceholder: "Search Virally",
   commandPaletteHint: "⌘K",
   workspaceLabel: "Workspace",
   brandLabel: "Brand",

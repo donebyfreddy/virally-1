@@ -23,7 +23,7 @@ export type PanelTone =
   /** Recessed: preview wells, code, empty containers. */
   | "inset"
   /**
-   * The one ambient treatment — a barely-there cool lift for a hero panel.
+   * The one ambient treatment — a barely-there violet lift for a hero panel.
    * Not a glow and not glassmorphism: opaque, no blur, no hue outside the
    * existing slate ramp, and it never carries information.
    */

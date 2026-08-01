@@ -5,6 +5,7 @@ import {
   CreditCard,
   FlaskConical,
   FolderOpen,
+  Sparkles,
   Gauge,
   LayoutGrid,
   Settings,
@@ -39,6 +40,11 @@ export const navIcons: Record<NavId, LucideIcon> = {
   calendar: CalendarDays,
   accounts: AtSign,
   analytics: BarChart3,
+  // Sparkles, despite the design rules calling sparkle icons a marketing
+  // cliché — that prohibition is about decoration. Here the glyph is the only
+  // one in the set that reads as "the machine makes something new", which is
+  // exactly the operation, and it collides with nothing else on the rail.
+  generate: Sparkles,
   library: FolderOpen,
   experiments: FlaskConical,
   team: Users,

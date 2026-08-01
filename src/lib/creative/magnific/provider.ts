@@ -1,3 +1,8 @@
+import {
+  isRoutable,
+  type GenerationCapability,
+  type GenerationModel,
+} from "../capabilities";
 import { CREATIVE_ENV, isMagnificConfigured } from "../env";
 import { centsToCredits } from "../modes";
 import type {
@@ -16,6 +21,7 @@ import type {
 import { ProviderNotConfiguredError, ProviderUnsupportedError } from "../types";
 import type { MagnificModel, MagnificTaskStatus } from "./catalog";
 import {
+  MAGNIFIC_MODELS_NORMALISED,
   findModel,
   quantiseDuration,
   selectModel,
@@ -57,14 +63,36 @@ export class MagnificProvider implements CreativeGenerationProvider {
   private readonly client: MagnificClient;
   /** Overrides model selection; used by the router and by tests. */
   private readonly modelOverride: string | null;
+  private readonly catalog: readonly GenerationModel[];
 
-  constructor(options: { client?: MagnificClient; modelId?: string } = {}) {
+  constructor(
+    options: {
+      client?: MagnificClient;
+      modelId?: string;
+      catalog?: readonly GenerationModel[];
+    } = {},
+  ) {
     this.client = options.client ?? new MagnificClient();
     this.modelOverride = options.modelId ?? null;
+    this.catalog = options.catalog ?? MAGNIFIC_MODELS_NORMALISED;
   }
 
   isConfigured(): boolean {
     return isMagnificConfigured();
+  }
+
+  /**
+   * The catalogue in its normalized, cross-provider shape.
+   *
+   * Derived from `MAGNIFIC_MODELS` rather than maintained as a second list, so
+   * the two cannot drift. Injectable via the constructor for the same reason
+   * the MuAPI adapter's is: the authoritative catalogue at runtime is
+   * `generation_models` in Neon, and the shipped array is the seed.
+   */
+  async listModels(capability?: GenerationCapability): Promise<readonly GenerationModel[]> {
+    const routable = this.catalog.filter(isRoutable);
+    if (capability === undefined) return routable;
+    return routable.filter((model) => model.capabilities.includes(capability));
   }
 
   supports(query: SupportsQuery): SupportDecision {

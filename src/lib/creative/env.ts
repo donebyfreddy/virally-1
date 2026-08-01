@@ -26,6 +26,14 @@
 export const CREATIVE_ENV = {
   magnificApiKey: "MAGNIFIC_API_KEY",
   magnificWebhookSecret: "MAGNIFIC_WEBHOOK_SECRET",
+  /**
+   * Upstream tooling calls this `MUAPI_KEY`; Virally does not.
+   *
+   * Named for consistency with `MAGNIFIC_API_KEY` because these variables are
+   * read side by side in every deployment checklist, and a set where one member
+   * breaks the pattern is the one an operator mistypes.
+   */
+  muapiApiKey: "MUAPI_API_KEY",
 } as const;
 
 export type CreativeEnvVar = (typeof CREATIVE_ENV)[keyof typeof CREATIVE_ENV];
@@ -80,6 +88,80 @@ export function isMagnificConfigured(): boolean {
  */
 export function isMagnificWebhookConfigured(): boolean {
   return magnificWebhookSecret() !== undefined;
+}
+
+/**
+ * The MuAPI key, for the HTTP client in src/lib/creative/muapi/ only.
+ *
+ * Not exported from src/lib/creative/index.ts, for the same reason
+ * `magnificApiKey` is not: call sites need to know *whether* generation is
+ * possible, never the credential.
+ */
+export function muapiApiKey(): string | undefined {
+  return readSecret(CREATIVE_ENV.muapiApiKey);
+}
+
+export function isMuApiConfigured(): boolean {
+  return muapiApiKey() !== undefined;
+}
+
+/**
+ * Per-provider configuration state.
+ *
+ * Validated separately per provider, and deliberately not aggregated into a
+ * single boolean: a deployment with Magnific but not MuAPI is a normal, fully
+ * working configuration, and one overall "generation available" flag would
+ * force the settings UI to either overstate or understate what is actually
+ * possible.
+ */
+export type ProviderEnvStatus = {
+  providerId: string;
+  label: string;
+  /** The variable an operator must set. Safe to render and to log. */
+  credentialEnvVar: string;
+  configured: boolean;
+  /** Prose for the settings surface. Names variables, never values. */
+  detail: string;
+};
+
+function magnificDetail(): string {
+  if (!isMagnificConfigured()) {
+    return `Provider configuration required. Set ${CREATIVE_ENV.magnificApiKey} to enable Magnific.`;
+  }
+  if (!isMagnificWebhookConfigured()) {
+    return `Configured for generation. ${CREATIVE_ENV.magnificWebhookSecret} is not set, so completions are detected by polling instead of webhooks.`;
+  }
+  return "Configured for generation and verified webhook completion.";
+}
+
+export function describeProviderEnv(): readonly ProviderEnvStatus[] {
+  return [
+    {
+      providerId: "magnific",
+      label: "Magnific",
+      credentialEnvVar: CREATIVE_ENV.magnificApiKey,
+      configured: isMagnificConfigured(),
+      detail: magnificDetail(),
+    },
+    {
+      providerId: "muapi",
+      label: "MuAPI",
+      credentialEnvVar: CREATIVE_ENV.muapiApiKey,
+      configured: isMuApiConfigured(),
+      detail: isMuApiConfigured()
+        ? // Stated plainly because it is a real operational difference from
+          // Magnific, not a limitation of the adapter: MuAPI publishes no
+          // webhook signature scheme, so an inbound webhook cannot be
+          // authenticated and is therefore never trusted as a state transition.
+          "Configured for generation. MuAPI publishes no webhook signature scheme, so completions are detected by polling; an inbound webhook only schedules an earlier poll."
+        : `Provider configuration required. Set ${CREATIVE_ENV.muapiApiKey} to enable MuAPI.`,
+    },
+  ];
+}
+
+/** Whether any real provider can generate. False means the mock is all there is. */
+export function isAnyProviderConfigured(): boolean {
+  return describeProviderEnv().some((provider) => provider.configured);
 }
 
 export type CreativeEnvStatus = {

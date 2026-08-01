@@ -1,3 +1,4 @@
+import type { GenerationCapability, GenerationModel } from "./capabilities";
 import type { AspectRatio, OutputOrigin } from "@/types/database";
 
 /**
@@ -82,6 +83,47 @@ export const TERMINAL_TASK_STATES: readonly GenerationTaskState[] = [
 
 export function isTerminalState(state: GenerationTaskState): boolean {
   return TERMINAL_TASK_STATES.includes(state);
+}
+
+/**
+ * The state vocabulary of a persisted run, which is wider than what a provider
+ * can report.
+ *
+ * Three states are Virally's own and exist only here:
+ *
+ * `waiting_external` — submitted, and the provider has acknowledged but not
+ *   started. Distinguished from `submitted` so the poller can back off harder
+ *   on a queue that has not moved than on one actively working.
+ *
+ * `validating` — bytes are downloaded and the MIME, signature, checksum and
+ *   probe checks have not yet passed. Between `downloading` and `completed`
+ *   because a file that arrived and a file that is known good are different
+ *   things, and only the latter may be attached to a campaign.
+ *
+ * `dead_letter` — retries exhausted. Terminal, and deliberately not `failed`:
+ *   a failed run may be retried by a user, a dead-lettered one needs an
+ *   operator to look at it, and collapsing them hides a systemic fault behind
+ *   a pile of individually-plausible failures.
+ *
+ * No adapter may return these. They describe where the orchestrator is, which
+ * is information no provider has — keeping them out of `GenerationTaskState`
+ * is what makes that unrepresentable rather than merely discouraged.
+ */
+export type ProviderRunState =
+  | GenerationTaskState
+  | "waiting_external"
+  | "validating"
+  | "dead_letter";
+
+export const TERMINAL_RUN_STATES: readonly ProviderRunState[] = [
+  "completed",
+  "failed",
+  "cancelled",
+  "dead_letter",
+];
+
+export function isTerminalRunState(state: ProviderRunState): boolean {
+  return TERMINAL_RUN_STATES.includes(state);
 }
 
 export type GenerationFailure = {
@@ -213,6 +255,20 @@ export interface CreativeGenerationProvider {
   isConfigured(): boolean;
 
   /**
+   * The models this provider offers, optionally filtered by capability.
+   *
+   * Asynchronous because the authoritative catalogue is the `generation_models`
+   * table, not the in-code array — that indirection is what lets a model be
+   * added, retired, renamed, repriced or switched off without a deploy, which
+   * a synchronous getter over a module constant could never support.
+   *
+   * The in-code catalogues remain the seed and the fallback for an unseeded
+   * deployment, so this resolves to something useful before the first migration
+   * has run.
+   */
+  listModels(capability?: GenerationCapability): Promise<readonly GenerationModel[]>;
+
+  /**
    * Whether the provider can serve this request at all.
    *
    * Separate from `isConfigured` so the router can distinguish "not set up" from
@@ -239,8 +295,21 @@ export type GenerationKind = "image" | "video" | "audio";
 
 export type SupportsQuery = {
   kind: GenerationKind;
+  /**
+   * The finer-grained routing dimension, where `kind` is the output dimension.
+   *
+   * Optional so every existing kind-shaped call site keeps working. When it is
+   * absent the provider answers about the kind as a whole, which is the older
+   * and looser question: a provider that can do text-to-image but not
+   * image-to-image will say yes to `kind: "image"` and no to
+   * `capability: "image-to-image"`. New call sites should pass it.
+   */
+  capability?: GenerationCapability;
   ratio?: AspectRatio;
   durationSeconds?: number;
+  resolution?: string;
+  /** How many reference images the caller intends to send. */
+  referenceImageCount?: number;
   mode: ProductionMode;
 };
 

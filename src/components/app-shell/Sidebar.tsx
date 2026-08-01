@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings, UserRound, Zap } from "lucide-react";
 import type { MemberRole } from "@/types/database";
 import { cn } from "@/lib/cn";
 import { useLocalFlag } from "@/lib/hooks/useLocalFlag";
@@ -42,7 +42,15 @@ const COLLAPSE_KEY = "virally:sidebar-collapsed";
  * Read through `useSyncExternalStore`, which resolves the hydration problem
  * without a mount effect — see useLocalFlag.
  */
-export function Sidebar({ role }: { role: MemberRole }) {
+export function Sidebar({
+  role,
+  userLabel,
+  creditsAvailable,
+}: {
+  role: MemberRole;
+  userLabel: string;
+  creditsAvailable: number;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useLocalFlag(COLLAPSE_KEY, false);
 
@@ -59,7 +67,7 @@ export function Sidebar({ role }: { role: MemberRole }) {
       // scroll effect, so it does not run on the compositor path that matters.
       className={cn(
         "sticky top-0 hidden h-dvh shrink-0 flex-col lg:flex",
-        "border-r border-[var(--border-default)] bg-[var(--surface-primary)]",
+        "border-r border-[var(--border-default)] bg-[var(--surface-sidebar)]",
         "transition-[width] duration-[var(--dur-base)] ease-[var(--ease-cut)]",
         collapsed ? "w-[var(--app-rail-collapsed)]" : "w-[var(--app-rail)]",
       )}
@@ -134,6 +142,13 @@ export function Sidebar({ role }: { role: MemberRole }) {
         )}
       </div>
 
+      <SidebarAccount
+        collapsed={collapsed}
+        userLabel={userLabel}
+        creditsAvailable={creditsAvailable}
+        showUsage={can(role, "billing.view")}
+      />
+
       {/* Collapsed state has no room for a label beside the wordmark, so the
           expand control lives at the foot instead. */}
       {collapsed && (
@@ -148,7 +163,7 @@ export function Sidebar({ role }: { role: MemberRole }) {
 /**
  * The collapsed-rail brand mark.
  *
- * A teal tile rather than a bare letter: at 4rem wide the rail has nothing else
+ * A violet tile rather than a bare letter: at 4rem wide the rail has nothing else
  * to anchor the eye, and an unboxed "V" reads as a stray character.
  */
 function BrandMark() {
@@ -237,8 +252,8 @@ function GroupLabel({
 /**
  * A rail destination.
  *
- * The active state is carried by three channels, not one: a soft teal
- * background, a teal icon, and a heavier label weight. Colour alone would fail
+ * The active state is carried by three channels, not one: a soft violet
+ * background, a violet icon, and a heavier label weight. Colour alone would fail
  * for a user who cannot separate the mint wash from white, and
  * `aria-current="page"` carries it for assistive technology regardless.
  */
@@ -274,7 +289,7 @@ function SidebarLink({
         "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
         collapsed ? "justify-center px-0" : "px-[var(--space-2)]",
         active
-          ? "bg-[var(--brand-soft)] text-[color:var(--brand-ink)] font-[var(--weight-strong)]"
+          ? "bg-[var(--brand-soft)] text-[color:var(--brand-ink)] font-[var(--weight-strong)] shadow-[inset_3px_0_0_var(--brand-primary)]"
           : "text-[color:var(--text-secondary)] hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
       )}
     >
@@ -292,5 +307,84 @@ function SidebarLink({
 
       {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
     </Link>
+  );
+}
+
+function SidebarAccount({
+  collapsed,
+  userLabel,
+  creditsAvailable,
+  showUsage,
+}: {
+  collapsed: boolean;
+  userLabel: string;
+  creditsAvailable: number;
+  showUsage: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "border-t border-[var(--border-default)]",
+        collapsed ? "p-[var(--space-2)]" : "p-[var(--space-3)]",
+      )}
+    >
+      {showUsage && (
+        <Link
+          href="/app/usage"
+          title={collapsed ? "Production credits" : undefined}
+          className={cn(
+            "flex items-center rounded-[var(--radius-control)]",
+            "bg-[var(--brand-soft)] text-[color:var(--brand-ink)]",
+            "transition-colors duration-[var(--dur-instant)] hover:bg-[var(--brand-soft-border)]",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+            collapsed ? "h-9 justify-center" : "min-h-11 gap-[var(--space-3)] px-[var(--space-3)]",
+          )}
+        >
+          <Zap aria-hidden="true" size={16} strokeWidth={1.9} className="shrink-0" />
+          {collapsed ? (
+            <span className="sr-only">Production credits</span>
+          ) : (
+            <span className="min-w-0 flex-1">
+              <span className="block text-[length:var(--text-app-label)] text-[color:var(--text-secondary)]">
+                Production credits
+              </span>
+              <span className="app-figure block text-[length:var(--text-app-cell)] font-[var(--weight-heading)]">
+                {creditsAvailable.toLocaleString("en-US")} available
+              </span>
+            </span>
+          )}
+        </Link>
+      )}
+
+      <Link
+        href="/app/settings"
+        title={collapsed ? userLabel : undefined}
+        className={cn(
+          "mt-[var(--space-2)] flex items-center rounded-[var(--radius-control)]",
+          "text-[color:var(--text-secondary)] transition-colors duration-[var(--dur-instant)]",
+          "hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+          collapsed ? "h-9 justify-center" : "min-h-10 gap-[var(--space-3)] px-[var(--space-2)]",
+        )}
+      >
+        {collapsed ? (
+          <UserRound aria-hidden="true" size={17} strokeWidth={NAV_ICON_STROKE} />
+        ) : (
+          <>
+            <span
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-[var(--radius-full)] bg-[var(--surface-muted)] text-[length:var(--text-app-label)] font-[var(--weight-heading)] text-[color:var(--text-secondary)]"
+            >
+              {userLabel.charAt(0).toUpperCase()}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[length:var(--text-app-cell)] font-[var(--weight-strong)]">
+              {userLabel}
+            </span>
+            <Settings aria-hidden="true" size={15} strokeWidth={NAV_ICON_STROKE} className="text-[color:var(--text-muted)]" />
+          </>
+        )}
+        <span className="sr-only">Account settings</span>
+      </Link>
+    </div>
   );
 }

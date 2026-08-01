@@ -112,7 +112,7 @@ describe("the text ramp has usable separation", () => {
 describe("the chart ramp", () => {
   const series = ["chart-1", "chart-2", "chart-3", "chart-4"] as const;
 
-  it("assigns teal to series 1, the primary measure", () => {
+  it("assigns the Virally violet to series 1, the primary measure", () => {
     expect(appPalette["chart-1"]).toBe(appPalette["brand-mark"]);
   });
 
@@ -130,9 +130,9 @@ describe("the chart ramp", () => {
 });
 
 describe("the brand pair", () => {
-  it("holds the mark and the text teal in the same hue family", () => {
+  it("holds the mark and the text violet in the same hue family", () => {
     // If these drift apart the product stops reading as having one accent and
-    // starts reading as having two teals, which is worse than having one.
+    // starts reading as having two unrelated purples, which is worse than one.
     const hue = (hex: string) => {
       const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
       const max = Math.max(r, g, b);

@@ -1,3 +1,8 @@
+import {
+  GENERATION_CAPABILITIES,
+  type GenerationCapability,
+  type GenerationModel,
+} from "./capabilities";
 import type {
   AudioGenerationInput,
   CostEstimate,
@@ -73,6 +78,44 @@ export class MockCreativeProvider implements CreativeGenerationProvider {
   /** Always true: the mock is the fallback that must never itself be unavailable. */
   isConfigured(): boolean {
     return true;
+  }
+
+  /**
+   * One free model per capability.
+   *
+   * Synthesised rather than curated so the mock automatically covers a
+   * capability the moment one is added to the taxonomy — a hand-written list
+   * would silently stop covering the newest capability, which is the one whose
+   * UI most needs to be exercisable without credentials.
+   *
+   * Every entry is priced at zero and accepts everything, matching `supports()`.
+   */
+  async listModels(capability?: GenerationCapability): Promise<readonly GenerationModel[]> {
+    const wanted = capability ? [capability] : GENERATION_CAPABILITIES;
+    return wanted.map((each) => ({
+      id: `mock.${each}`,
+      providerId: this.id,
+      externalModelId: each,
+      name: `Demo ${each.replaceAll("-", " ")}`,
+      description: DEMO_OUTPUT_EXPLANATION,
+      capabilities: [each],
+      inputTypes: ["text", "image", "video", "audio"],
+      maxReferenceImages: 4,
+      // Empty means unconstrained, which is the honest answer for a mock and
+      // keeps every format path reachable without credentials.
+      supportedAspectRatios: [],
+      supportedDurations: [],
+      supportedResolutions: [],
+      supportsNegativePrompt: true,
+      supportsSeed: true,
+      supportsAudio: true,
+      modes: ["fast", "hybrid", "cinematic"],
+      // Zero, never undefined. Undefined would make `isRoutable` reject the
+      // mock and leave the fallback path with nothing to fall back to.
+      estimatedCentsPerUnit: 0,
+      enabled: true,
+      metadata: { demo: true },
+    }));
   }
 
   /**

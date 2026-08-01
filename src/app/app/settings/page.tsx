@@ -105,17 +105,21 @@ export default async function SettingsPage() {
           meta={[context.organizationName, context.workspaceName, ROLE_LABELS[context.role]]}
         />
 
-        {/* Stated once, at the top, rather than repeated on every card. A user who
-            came here to change something needs to know that in one line. */}
-        <div className="max-w-[46rem]">
-          <AuthMessage
-            tone="notice"
-            title={settingsCopy.readOnlyTitle}
-            body={settingsCopy.readOnlyBody}
-          />
-        </div>
+        <div className="grid min-w-0 items-start gap-[var(--space-6)] lg:grid-cols-[12rem_minmax(0,1fr)]">
+          <SettingsNav />
 
-        <div className="grid gap-[var(--app-panel-gap)] xl:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-[var(--space-6)]">
+            {/* Stated once, at the top, rather than repeated on every card. A user who
+                came here to change something needs to know that in one line. */}
+            <div className="max-w-[46rem]">
+              <AuthMessage
+                tone="notice"
+                title={settingsCopy.readOnlyTitle}
+                body={settingsCopy.readOnlyBody}
+              />
+            </div>
+
+            <div className="grid gap-[var(--app-panel-gap)] xl:grid-cols-2">
           <SettingsCard
             id="settings-profile"
             title={settingsCopy.profileHeading}
@@ -244,39 +248,46 @@ export default async function SettingsPage() {
               </p>
             )}
           </SettingsCard>
-        </div>
+            </div>
 
-        {/* The remaining groups, each stating what it will hold and what gates
-            it. Listed rather than omitted so the page is a complete map of the
-            settings surface rather than only the parts that happen to be done. */}
-        <section aria-labelledby="settings-pending">
-          <SectionHeader
-            id="settings-pending"
-            title={settingsCopy.pendingHeading}
-            description={settingsCopy.pendingHint}
-          />
-          <ul className="mt-[var(--space-4)] grid gap-[var(--app-panel-gap)] sm:grid-cols-2 xl:grid-cols-3">
-            {SETTINGS_GROUPS.map((group) => (
-              <li key={group.id}>
-                <Card as="article" pad="default" className="flex h-full flex-col">
-                  <h3 className="app-card-title text-[color:var(--text-primary)]">{group.label}</h3>
-                  <p className="mt-[var(--space-2)] flex-1 text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]">
-                    {group.holds}
-                  </p>
-                  <p
-                    className={cn(
-                      "mt-[var(--space-3)] inline-flex w-fit items-center rounded-[var(--radius-chip)]",
-                      "bg-[var(--surface-muted)] px-2 py-0.5",
-                      "text-[length:var(--text-app-label)] text-[color:var(--text-secondary)]",
-                    )}
-                  >
-                    {group.gate}
-                  </p>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        </section>
+            {/* The remaining groups, each stating what it will hold and what gates
+                it. Listed rather than omitted so the page is a complete map of the
+                settings surface rather than only the parts that happen to be done. */}
+            <section aria-labelledby="settings-pending">
+              <SectionHeader
+                id="settings-pending"
+                title={settingsCopy.pendingHeading}
+                description={settingsCopy.pendingHint}
+              />
+              <ul className="mt-[var(--space-4)] grid gap-[var(--app-panel-gap)] sm:grid-cols-2 xl:grid-cols-3">
+                {SETTINGS_GROUPS.map((group) => (
+                  <li key={group.id}>
+                    <Card
+                      as="article"
+                      id={`settings-${group.id}`}
+                      pad="default"
+                      className="flex h-full scroll-mt-[var(--space-24)] flex-col"
+                    >
+                      <h3 className="app-card-title text-[color:var(--text-primary)]">{group.label}</h3>
+                      <p className="mt-[var(--space-2)] flex-1 text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]">
+                        {group.holds}
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-[var(--space-3)] inline-flex w-fit items-center rounded-[var(--radius-chip)]",
+                          "bg-[var(--surface-muted)] px-2 py-0.5",
+                          "text-[length:var(--text-app-label)] text-[color:var(--text-secondary)]",
+                        )}
+                      >
+                        {group.gate}
+                      </p>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
       </PageStack>
     </AppPage>
   );
@@ -285,6 +296,48 @@ export default async function SettingsPage() {
 /* ==========================================================================
    SMALL PARTS
    ======================================================================== */
+
+const SETTINGS_NAV = [
+  { href: "#settings-profile", label: "Profile" },
+  { href: "#settings-preferences", label: "Preferences" },
+  { href: "#settings-organisation", label: "Workspace" },
+  { href: "#settings-brand", label: "Brand" },
+  { href: "#settings-generation", label: "AI generation" },
+  { href: "#notifications", label: "Notifications" },
+  ...SETTINGS_GROUPS.map((group) => ({
+    href: `#settings-${group.id}`,
+    label: group.label,
+  })),
+] as const;
+
+/** Local settings navigation: a sticky rail on desktop and a swipeable row on mobile. */
+function SettingsNav() {
+  return (
+    <nav
+      aria-label="Settings sections"
+      className="-mx-[var(--app-gutter)] overflow-x-auto px-[var(--app-gutter)] lg:sticky lg:top-[calc(var(--app-topbar-height)+var(--space-6))] lg:mx-0 lg:overflow-visible lg:px-0"
+    >
+      <ul className="flex w-max gap-[var(--space-1)] pb-1 lg:w-full lg:flex-col lg:pb-0">
+        {SETTINGS_NAV.map((item) => (
+          <li key={item.href}>
+            <a
+              href={item.href}
+              className={cn(
+                "block whitespace-nowrap rounded-[var(--radius-control)] px-[var(--space-3)] py-[var(--space-2)]",
+                "text-[length:var(--text-app-cell)] text-[color:var(--text-secondary)]",
+                "transition-colors duration-[var(--dur-instant)]",
+                "hover:bg-[var(--surface-muted)] hover:text-[color:var(--text-primary)]",
+                "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+              )}
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
 
 /**
  * One settings group.

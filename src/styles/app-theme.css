@@ -5,8 +5,8 @@
 
    A marketing page persuades with negative space and a near-black stage. An
    operations surface earns trust by showing a lot of true state at once, and it
-   is read for hours at a time — so the product runs on a bright canvas, white
-   surfaces, one teal accent, and roughly twice the information density.
+   is read for hours at a time — so the product runs on a warm bright canvas,
+   white surfaces, one violet accent, and roughly twice the information density.
 
    ── How this file works ─────────────────────────────────────────────────────
 
@@ -33,9 +33,9 @@
    are:
 
      --surface-primary    #ffffff   L 1.00000
-     --surface-secondary  #f8fafb   L 0.95288
-     --app-background     #f4f7f8   L 0.92525
-     --surface-muted      #f1f5f6   L 0.90671
+     --surface-secondary  #faf9fc
+     --app-background     #f7f5fa
+     --surface-muted      #f3f0f6
 
    `--surface-muted` is the darkest, so a token that clears 4.5:1 against it
    clears 4.5:1 everywhere in the app. Ratios below are stated against white (the
@@ -62,10 +62,11 @@
      the boundary between surfaces is carried by a border, not by a
      luminance jump. Stacking high-contrast greys is what makes a light
      dashboard look like a spreadsheet. */
-  --app-background: #f4f7f8;    /* the canvas behind every panel */
+  --app-background: #f7f5fa;    /* warm canvas behind every panel */
   --surface-primary: #ffffff;   /* cards, tables, the default panel */
-  --surface-secondary: #f8fafb; /* a control or nested surface ON a card */
-  --surface-muted: #f1f5f6;     /* recessed wells, table header bands, tracks */
+  --surface-secondary: #faf9fc; /* a control or nested surface ON a card */
+  --surface-muted: #f3f0f6;     /* recessed wells, table header bands, tracks */
+  --surface-sidebar: #fbfaff;   /* slightly violet chrome around the workspace */
 
   /* ---- Text ------------------------------------------------------
      A three-step ramp with real separation — 16.2 / 7.8 / 5.1 on white.
@@ -74,36 +75,34 @@
   --text-primary: #17212b;   /* 16.29:1 white · 14.84:1 muted */
   --text-secondary: #48545f; /*  7.75:1 white ·  7.06:1 muted */
   --text-muted: #636f7d;     /*  5.12:1 white ·  4.67:1 muted */
-  --text-on-brand: #ffffff;  /*  5.47:1 on --brand-primary */
+  --text-on-brand: #ffffff;  /*  7.10:1 on --brand-primary */
 
   /* ---- Brand ------------------------------------------------------
      One accent, split into two tokens because one hex cannot do both
      jobs on a white page.
 
-     The bright aqua the brief asked for (#10b8aa) measures 2.48:1 on
-     white. That fails the 4.5:1 text floor AND the 3:1 graphical-object
-     floor, so as a button fill it cannot carry white text and as a chart
-     stroke it is invisible. Refined per the brief's own instruction to
-     check contrast first:
+     Violet is split into a text-safe fill and a brighter graphical mark. A
+     single fashionable purple cannot do both jobs without either washing out
+     on white or making primary buttons unnecessarily dark:
 
-       --brand-primary  solid fills that carry text  → 5.47:1 with white
-       --brand-mark     strokes, rails, fills, icons → 3.74:1, no text
+       --brand-primary  solid fills that carry text  → 7.10:1 with white
+       --brand-mark     strokes, rails, fills, icons → 4.23:1, no text
 
-     Both sit in the same teal family, so the accent still reads as one
+     Both sit in the same violet family, so the accent still reads as one
      colour; only the luminance differs, and it differs because the
      contrast duty differs. */
-  --brand-primary: #0f766e;        /* white text 5.47:1 */
-  --brand-primary-hover: #0c6058;
-  --brand-primary-active: #0a524b;
-  --brand-mark: #0d9488;           /* 3.74:1 on white — graphical only */
-  --brand-soft: #ddf5f1;           /* active nav wash, soft chips */
-  --brand-soft-border: #a7ddd6;
-  --brand-ink: #0f766e;            /* 4.80:1 on --brand-soft */
+  --brand-primary: #6d28d9;        /* white text 7.10:1 */
+  --brand-primary-hover: #5b21b6;
+  --brand-primary-active: #4c1d95;
+  --brand-mark: #8b5cf6;           /* 4.23:1 on white — graphical only */
+  --brand-soft: #f3e8ff;           /* active nav wash, soft chips */
+  --brand-soft-border: #d8b4fe;
+  --brand-ink: #6d28d9;            /* 6.02:1 on --brand-soft */
 
   /* ---- Data-visualisation secondary ------------------------------
      Used for a second series or a supporting accent, never for a
-     primary action. Teal is the only interactive colour in the app. */
-  --accent-secondary: #4f5fd7;     /* 5.86:1 white · 5.34:1 muted */
+     primary action. Violet is the only interactive colour in the app. */
+  --accent-secondary: #0f766e;     /* supporting teal; data only, never a CTA */
 
   /* ---- Semantic ---------------------------------------------------
      Each state is a PAIR, for the same reason the brand is:
@@ -116,7 +115,7 @@
      single hex per state either fails as text or disappears as a mark,
      which is how "accessible palettes" end up with unreadable badges. */
   --success: #0c7a54;       /*  5.35:1 white ·  4.87:1 muted */
-  --success-mark: #16a06b;  /*  3.35:1 white ·  3.05:1 muted */
+  --success-mark: #159b68;  /* clears 3:1 on every app surface */
   --success-soft: #e2f6ed;
 
   --warning: #8a5a00;       /*  5.93:1 white ·  5.40:1 muted */
@@ -146,10 +145,10 @@
      Collapsing these is the standard light-theme accessibility bug: a
      #dfe6e9 hairline measures 1.26:1, which is correct for a card seam
      and illegal for a text field. */
-  --border-subtle: #eaeff1;  /* 1.14:1 — inside a card */
-  --border-default: #dae2e5; /* 1.35:1 — card and table boundary */
-  --border-strong: #c3ced3;  /* 1.60:1 — emphasised boundary */
-  --border-control: #818f9a; /* 3.32:1 on white — form control edges */
+  --border-subtle: #eeeaf2;  /* decorative separator inside a card */
+  --border-default: #e2dce8; /* card and table boundary */
+  --border-strong: #cbc2d4;  /* emphasised boundary */
+  --border-control: #887b91; /* 3.52:1 on the darkest app surface */
 
   /* ---- Media canvas -----------------------------------------------
      The ONE dark surface in the product, and it exists for a perceptual
@@ -166,7 +165,7 @@
 
      Ratios measured against --media-canvas:
        --text-on-media  #ffffff  16.29:1  message text, transport labels
-       --brand-mark     #0d9488   4.35:1  graphical only, clears 3:1
+       --brand-mark     #8b5cf6   3.85:1  graphical only, clears 3:1
        --text-secondary #48545f   2.10:1  MUST NOT be used on this surface
      ------------------------------------------------------------------ */
   --media-canvas: #17212b;
@@ -177,30 +176,31 @@
   --border-media: rgb(255 255 255 / 0.14);
 
   /* ---- Focus ------------------------------------------------------
-     Teal rather than the marketing site's amber, and never removed.
-     5.47:1 on white, 5.08:1 on the app canvas. */
-  --focus-ring: #0f766e;
+     Violet rather than the marketing site's amber, and never removed. */
+  --focus-ring: #6d28d9;
 
   /* ---- Elevation --------------------------------------------------
      Restrained on purpose. On a light theme, separation comes from the
      border; the shadow only says "this floats above the page". Heavy
      drop shadows under every card are the single fastest way to make a
      dashboard look like a 2016 template. */
-  --elevation-card: 0 1px 2px 0 rgb(23 33 43 / 0.04);
+  --elevation-card:
+    0 1px 2px 0 rgb(48 31 68 / 0.04),
+    0 8px 22px -18px rgb(76 29 149 / 0.24);
   --elevation-raised:
-    0 1px 2px 0 rgb(23 33 43 / 0.05),
-    0 2px 8px -2px rgb(23 33 43 / 0.06);
+    0 2px 4px 0 rgb(48 31 68 / 0.06),
+    0 14px 30px -16px rgb(76 29 149 / 0.22);
   --elevation-overlay:
-    0 1px 3px 0 rgb(23 33 43 / 0.06),
-    0 12px 32px -8px rgb(23 33 43 / 0.16);
+    0 2px 6px 0 rgb(48 31 68 / 0.08),
+    0 22px 54px -18px rgb(46 16 101 / 0.30);
 
   /* ---- Radius -----------------------------------------------------
      The marketing site runs two radii (4px / 16px). The product needs a
      middle step: 16px on a 32px-tall chip reads as a pill, and 4px on a
      card reads as a dialog box from a settings panel. */
-  --radius-card: 12px;
-  --radius-control: 8px;
-  --radius-chip: 6px;
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --radius-chip: 8px;
 
   /* ---- Layout skeleton -------------------------------------------
      Compact. The previous shell spent 15rem on the rail and 4.5rem on
@@ -261,15 +261,15 @@
      The stroke patterns stay mandatory. Series 1 (teal) and series 2
      (blue) are the pair a deutan reader separates least well, and hue
      alone should never be the only channel carrying series identity. */
-  --chart-1: #0d9488; /* 3.74:1 — primary measure */
+  --chart-1: #8b5cf6; /* 4.23:1 — primary measure */
   --chart-2: #2563eb; /* 5.17:1 — comparison */
-  --chart-3: #7c3aed; /* 5.70:1 — third series */
+  --chart-3: #0f766e; /* 5.47:1 — supporting teal */
   /* Darkened from #d97706, which cleared 3:1 on white (3.19) but measured 2.90
      against --surface-muted. A chart drawn on a muted card would have had one
      series below the graphical-object floor. */
   --chart-4: #cf7005; /* 3.52:1 white · 3.20:1 muted — fourth series */
 
-  --chart-fill-1: rgb(13 148 136 / 0.12);
+  --chart-fill-1: rgb(139 92 246 / 0.14);
   --chart-fill-2: rgb(37 99 235 / 0.10);
 
   /* Grid lines are decorative and deliberately far below 3:1 — a grid
@@ -301,7 +301,7 @@
   --color-border: var(--border-control);
   --color-border-strong: var(--border-strong);
 
-  /* Amber → teal. `--color-action` is the marketing site's "a human must
+  /* Amber → violet. `--color-action` is the marketing site's "a human must
      commit" accent and drives every primary button, so this one line is
      what removes the yellow buttons from the product. */
   --color-action: var(--brand-primary);
@@ -310,8 +310,8 @@
   --color-focus: var(--focus-ring);
 
   /* `--color-signal` is used as TEXT by existing components (the active
-     pipeline-stage label, for one), so it maps to the text-safe teal,
-     not to --brand-mark. A 3.74:1 stroke colour used as a 12px label is
+     pipeline-stage label, for one), so it maps to the text-safe violet,
+     not to --brand-mark. A graphical stroke colour used as a 12px label is
      exactly the substitution this pairing exists to prevent. */
   --color-signal: var(--brand-primary);
 
@@ -395,6 +395,10 @@
      are what actually make the subtree light and dense.
      ================================================================== */
   background-color: var(--app-background);
+  background-image:
+    radial-gradient(circle at 78% -10%, rgb(139 92 246 / 0.09), transparent 30rem),
+    linear-gradient(180deg, #fbfaff 0%, var(--app-background) 26rem);
+  background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-heading);
   font-size: var(--text-app-body);
@@ -406,7 +410,7 @@
    user sees the marketing site's near-black body flash at the top of every
    bounce. `:has()` is supported by every browser this app targets. */
 body:has(.theme-app) {
-  background-color: #f4f7f8;
+  background-color: #f7f5fa;
 }
 
 /* ============================================================================
@@ -510,6 +514,26 @@ body:has(.theme-app) {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* Indeterminate activity, for a machine process that reports no progress.
+ *
+ * MuAPI publishes no progress at all, so `provider_runs.progress` is null for
+ * most in-flight runs and the studios cannot render a determinate bar for them.
+ * The alternative — interpolating a percentage against elapsed time — is a
+ * fabricated metric, which section 10 rules out outright.
+ *
+ * The travelling segment is a quarter of the track, so the transform range runs
+ * from just off the leading edge to just past the trailing one. `transform`
+ * only, so it stays on the compositor; under reduced motion the segment simply
+ * sits still and the word beside it carries the state. */
+@keyframes virally-app-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
   }
 }
 

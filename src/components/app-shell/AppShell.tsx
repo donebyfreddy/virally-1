@@ -56,7 +56,11 @@ export function AppShell({
     // dark. See styles/app-theme.css.
     <div className="theme-app flex min-h-dvh">
       <SkipLink />
-      <Sidebar role={context.role} />
+      <Sidebar
+        role={context.role}
+        userLabel={displayName(context.user) ?? "Account"}
+        creditsAvailable={creditsAvailable}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar

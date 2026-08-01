@@ -157,28 +157,28 @@ export const CHART_SERIES_MIN_CONTRAST = 3;
    ========================================================================= */
 
 export const appPalette = {
-  "app-background": "#f4f7f8",
+  "app-background": "#f7f5fa",
   "surface-primary": "#ffffff",
-  "surface-secondary": "#f8fafb",
-  "surface-muted": "#f1f5f6",
+  "surface-secondary": "#faf9fc",
+  "surface-muted": "#f3f0f6",
 
   "text-primary": "#17212b",
   "text-secondary": "#48545f",
   "text-muted": "#636f7d",
   "text-on-brand": "#ffffff",
 
-  "brand-primary": "#0f766e",
-  "brand-primary-hover": "#0c6058",
-  "brand-primary-active": "#0a524b",
-  "brand-mark": "#0d9488",
-  "brand-soft": "#ddf5f1",
-  "brand-soft-border": "#a7ddd6",
-  "brand-ink": "#0f766e",
+  "brand-primary": "#6d28d9",
+  "brand-primary-hover": "#5b21b6",
+  "brand-primary-active": "#4c1d95",
+  "brand-mark": "#8b5cf6",
+  "brand-soft": "#f3e8ff",
+  "brand-soft-border": "#d8b4fe",
+  "brand-ink": "#6d28d9",
 
-  "accent-secondary": "#4f5fd7",
+  "accent-secondary": "#0f766e",
 
   success: "#0c7a54",
-  "success-mark": "#16a06b",
+  "success-mark": "#159b68",
   "success-soft": "#e2f6ed",
 
   warning: "#8a5a00",
@@ -193,21 +193,21 @@ export const appPalette = {
   "info-mark": "#3d86e0",
   "info-soft": "#edf4fd",
 
-  "border-subtle": "#eaeff1",
-  "border-default": "#dae2e5",
-  "border-strong": "#c3ced3",
-  "border-control": "#818f9a",
+  "border-subtle": "#eeeaf2",
+  "border-default": "#e2dce8",
+  "border-strong": "#cbc2d4",
+  "border-control": "#887b91",
 
-  "focus-ring": "#0f766e",
+  "focus-ring": "#6d28d9",
 
   /* The one dark surface. Same value as --text-primary by design — see the
      MEDIA CANVAS block in app-theme.css. */
   "media-canvas": "#17212b",
   "text-on-media": "#ffffff",
 
-  "chart-1": "#0d9488",
+  "chart-1": "#8b5cf6",
   "chart-2": "#2563eb",
-  "chart-3": "#7c3aed",
+  "chart-3": "#0f766e",
   "chart-4": "#cf7005",
 } as const;
 
