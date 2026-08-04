@@ -330,7 +330,10 @@ test.describe("generation studios", () => {
   test("Generate becomes enabled once a prompt is written", async ({ page }) => {
     const errors = assertCleanConsole(page);
     await page.goto("/app/generate/image");
-    test.skip(!(await providerConfigured(page)), NO_PROVIDER);
+    // No provider gate. An unconfigured deployment routes to the deterministic
+    // mock, so a prompt is the only precondition — this test is what stops the
+    // form regressing to blocking on configuration, which made the studio a wall
+    // on first run and contradicted the server, which accepts the submission.
 
     const generate = generateButton(page);
     await expect(generate).toBeDisabled();

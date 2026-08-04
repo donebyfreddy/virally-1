@@ -170,10 +170,17 @@ export function StudioForm({
   // end, and this string is rendered under the button.
   const blocked = firstBlocker([
     [!canGenerate, "Your role does not include creating content in this workspace."],
-    [!configured, "No generation provider is configured, so nothing can be submitted yet."],
     [promptRequired && prompt.trim().length === 0, "Write a prompt first."],
     [consentNeeded && !consentConfirmed, "Confirm the likeness and voice permission first."],
   ]);
+
+  // NOT a blocker. An unconfigured deployment routes to the deterministic mock,
+  // which is the whole reason the mock exists: the brief requires the entire
+  // product — planning, generating, editing, scheduling — to stay exercisable
+  // with no credentials. Blocking here made the studio a wall on first run and
+  // contradicted the server, which accepts the submission and labels the output
+  // as demo. Stated rather than enforced, so the user knows what they will get.
+  const demoOnly = !configured;
 
   const submit = () => {
     setRefusal(null);
@@ -476,6 +483,7 @@ export function StudioForm({
         pending={pending}
         disabled={Boolean(blocked) || pending}
         disabledReason={blocked ?? undefined}
+        demoOnly={demoOnly}
         className="xl:sticky xl:top-[calc(var(--app-topbar-height)+var(--space-6))] xl:self-start"
       />
     </form>

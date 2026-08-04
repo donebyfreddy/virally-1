@@ -31,6 +31,14 @@ export function GenerationSummary({
   pending,
   disabled,
   disabledReason,
+  /**
+   * True when no provider is configured, so this will produce a demo asset.
+   *
+   * Stated next to the button rather than used to disable it. The mock is how
+   * the product stays exercisable without credentials; what a user must not be
+   * able to do is receive demo output believing it is real.
+   */
+  demoOnly = false,
   className,
 }: {
   providerLabel: string;
@@ -42,6 +50,7 @@ export function GenerationSummary({
   pending: boolean;
   disabled: boolean;
   disabledReason?: string;
+  demoOnly?: boolean;
   className?: string;
 }) {
   const after = credits === null ? null : available - credits;
@@ -129,6 +138,12 @@ export function GenerationSummary({
       >
         {generateCopy.generateLabel}
       </Button>
+
+      {demoOnly && !disabled && (
+        <p className="mt-[var(--space-2)] text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+          {generateCopy.demoOnlyHint}
+        </p>
+      )}
 
       {/* A disabled control that does not say why is a dead end. */}
       {disabled && disabledReason && (

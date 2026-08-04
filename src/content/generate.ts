@@ -181,6 +181,16 @@ export const generateCopy = {
   automaticCostHint:
     "Automatic runs the cheapest model that fits, so this is the floor rather than a fixed price.",
   costReleaseHint: "Credits are reserved before the run and the unused part is returned.",
+  /**
+   * Shown when no provider is configured.
+   *
+   * Says what will happen rather than refusing. The mock is how the product
+   * stays usable without credentials; the thing a user must never do is receive
+   * demo output believing it is real, so the label is stated up front and again
+   * on the asset itself.
+   */
+  demoOnlyHint:
+    "No provider is configured, so this runs against the deterministic mock and the result is labelled a demo.",
   generateLabel: "Generate",
   generatingLabel: "Starting",
 
