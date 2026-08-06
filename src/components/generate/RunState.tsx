@@ -80,12 +80,12 @@ export function RunStateChip({
 /**
  * Progress for one run.
  *
- * `progress` is `number | null` and null is the COMMON case — MuAPI reports no
- * progress at all — so the indeterminate branch is the one that had to be
- * designed properly rather than treated as a fallback. It states that progress
- * is unknown in words as well as in the animation, because an animation carries
- * no information under `prefers-reduced-motion` and must never be the only
- * channel.
+ * `progress` is `number | null` and null is the COMMON case — fal reports a
+ * queue position, never a percentage — so the indeterminate branch is the one
+ * that had to be designed properly rather than treated as a fallback. It
+ * states that progress is unknown in words as well as in the animation,
+ * because an animation carries no information under `prefers-reduced-motion`
+ * and must never be the only channel.
  */
 export function RunProgress({
   progress,

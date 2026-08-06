@@ -20,7 +20,7 @@ import {
   workspaceLimits,
 } from "@/lib/db/schema";
 import { workspaceAccountSlotLimit } from "@/lib/db/authorization";
-import { isMagnificConfigured } from "@/lib/creative";
+import { isAnyProviderConfigured } from "@/lib/creative";
 import { tenantScope } from "@/lib/creative/scope";
 import { ledgerReasonLabel, readUsageSummary } from "@/lib/creative/usage";
 import { cn } from "@/lib/cn";
@@ -436,7 +436,7 @@ export default async function UsagePage() {
           }
         />
 
-        {!isMagnificConfigured() && (
+        {!isAnyProviderConfigured() && (
           <div className="max-w-[46rem]">
             <AuthMessage
               tone="notice"

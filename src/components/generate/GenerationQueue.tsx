@@ -36,7 +36,7 @@ import { DemoChip, RunProgress, RunStateChip } from "./RunState";
  *   again.
  *
  * Progress is rendered exactly as the provider reports it. `progress` is null
- * for every MuAPI run, so the indeterminate indicator is the common path — see
+ * for every fal run, so the indeterminate indicator is the common path — see
  * `RunProgress`. Nothing here interpolates a percentage from elapsed time.
  */
 

@@ -148,15 +148,16 @@ export function requiresConsent(capability: GenerationCapability): boolean {
  * a vendor rename rewrite history.
  */
 export type GenerationModel = {
-  /** Virally's stable id, e.g. "muapi.flux-dev". Recorded on every run. */
+  /** Virally's stable id, e.g. "fal.flux-dev". Recorded on every run. */
   id: string;
   providerId: string;
   /**
    * The provider's own identifier or endpoint slug.
    *
-   * For MuAPI this is the path segment after `/api/v1/`, which is NOT derivable
-   * from the model name — `flux-dev` posts to `flux-dev-image`. For Magnific it
-   * is the full endpoint path. Stored, never constructed.
+   * For fal this is the model's queue endpoint id (`fal-ai/flux/dev`), which is
+   * NOT derivable from the model name — `fal-ai/flux/dev` and
+   * `fal-ai/flux-pro/kontext` share nothing predictable. For Magnific it is the
+   * full endpoint path. Stored, never constructed.
    */
   externalModelId: string;
   name: string;
@@ -196,7 +197,7 @@ export type GenerationModel = {
   /**
    * Virally's cost basis, in integer cents per unit generated.
    *
-   * Always a configured figure for MuAPI, which publishes no prices at all.
+   * Always a configured figure for fal, which publishes no prices at all.
    * Undefined means the model is catalogued but unpriced, and an unpriced model
    * is never routed to — the estimator cannot quote it honestly and the credit
    * reservation would have nothing to reserve against.

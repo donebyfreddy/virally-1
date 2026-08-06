@@ -89,25 +89,19 @@ test.describe("mobile menu", () => {
     "menu only exists below the lg breakpoint",
   );
 
-  test("opens, traps focus, closes on Escape and restores focus", async ({ page }) => {
+  test("opens, closes on Escape and restores focus", async ({ page }) => {
     await page.goto("/");
-    const trigger = page.getByRole("button", { name: "Open menu" });
+    const trigger = page.getByRole("button", { name: "Toggle menu" });
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
     await trigger.click();
 
-    const dialog = page.getByRole("dialog", { name: "Site menu" });
-    await expect(dialog).toBeVisible();
+    const panel = page.locator("#mobile-nav-panel");
+    await expect(panel).toBeVisible();
+    await expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
+    await expect(panel).toBeHidden();
     await expect(trigger).toBeFocused();
-  });
-
-  test("restores body scrolling after closing", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Open menu" }).click();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toBeHidden();
-    const overflow = await page.evaluate(() => document.body.style.overflow);
-    expect(overflow).not.toBe("hidden");
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 });

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment node
  *
- * Node for the same reason muapi.test.ts is: this file imports the creative
+ * Node for the same reason fal/fal.test.ts is: this file imports the creative
  * barrel, which reaches the credential guard in env.ts.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +13,9 @@ import {
   rowToModel,
   seedCatalog,
 } from "./catalog";
-import { GENERATION_CAPABILITIES, isRoutable, kindForCapability } from "./capabilities";
+import { isRoutable, kindForCapability } from "./capabilities";
+import { FAL_MODELS } from "./fal/catalog";
 import { MAGNIFIC_MODELS_NORMALISED } from "./magnific/catalog";
-import { MUAPI_MODELS } from "./muapi/catalog";
 
 /**
  * The catalogue is what makes models data rather than code.
@@ -50,14 +50,34 @@ describe("seed fallback", () => {
   it("combines both providers", () => {
     const providers = new Set(seedCatalog().map((each) => each.providerId));
     expect(providers.has("magnific")).toBe(true);
-    expect(providers.has("muapi")).toBe(true);
+    expect(providers.has("fal")).toBe(true);
   });
 
-  it("covers every capability across the two providers", () => {
+  it("covers every image, video and music capability across the two providers", () => {
     const covered = new Set(seedCatalog().flatMap((each) => each.capabilities));
-    for (const capability of GENERATION_CAPABILITIES) {
+    const expected = [
+      "text-to-image",
+      "image-to-image",
+      "text-to-video",
+      "image-to-video",
+      "music",
+      "sound-effect",
+    ] as const;
+    for (const capability of expected) {
       expect(covered.has(capability), capability).toBe(true);
     }
+  });
+
+  it("has no real provider for audio, lip-sync or upscale — these fall through to the mock", () => {
+    // MuAPI was the only provider that catalogued these three, and it has been
+    // removed from the active generation flow. A request for one of them is
+    // routed to the deterministic mock and labelled as demo until a fal or
+    // Magnific model is catalogued for it — see `describe("supports()")` in
+    // fal/fal.test.ts, which asserts the same gap from the provider side.
+    const covered = new Set(seedCatalog().flatMap((each) => each.capabilities));
+    expect(covered.has("audio")).toBe(false);
+    expect(covered.has("lip-sync")).toBe(false);
+    expect(covered.has("upscale")).toBe(false);
   });
 
   it("has no id collisions between providers", () => {
@@ -75,10 +95,10 @@ describe("seed fallback", () => {
 describe("filtering", () => {
   it("filters by capability", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const models = await listModels({ capability: "lip-sync" });
+    const models = await listModels({ capability: "image-to-video" });
     expect(models.length).toBeGreaterThan(0);
     for (const each of models) {
-      expect(each.capabilities).toContain("lip-sync");
+      expect(each.capabilities).toContain("image-to-video");
     }
   });
 
@@ -93,10 +113,10 @@ describe("filtering", () => {
 
   it("filters by provider", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const models = await listModels({ providerId: "muapi" });
+    const models = await listModels({ providerId: "fal" });
     expect(models.length).toBeGreaterThan(0);
     for (const each of models) {
-      expect(each.providerId).toBe("muapi");
+      expect(each.providerId).toBe("fal");
     }
   });
 });
@@ -106,7 +126,7 @@ describe("row mapping", () => {
     // The seeder and the runtime fallback both go through `modelToRow`. If the
     // round trip drops a constraint, a seeded deployment and an unseeded one
     // disagree about what a model can do — and only one of them is tested.
-    for (const original of [...MUAPI_MODELS, ...MAGNIFIC_MODELS_NORMALISED]) {
+    for (const original of [...FAL_MODELS, ...MAGNIFIC_MODELS_NORMALISED]) {
       const row = modelToRow(original, kindForCapability(original.capabilities[0]!));
       const restored = rowToModel({
         ...row,
@@ -136,9 +156,9 @@ describe("row mapping", () => {
   });
 
   it("never labels a configured price as a provider quote", () => {
-    // Neither vendor returns a price at submit time, and MuAPI publishes none
-    // at all. `provider_quote` would misrepresent where the figure came from.
-    for (const model of MUAPI_MODELS) {
+    // Neither vendor returns a price at submit time — fal publishes none at
+    // all. `provider_quote` would misrepresent where the figure came from.
+    for (const model of FAL_MODELS) {
       const row = modelToRow(model, "image");
       expect(row.costBasis).toBe("configured_table");
     }

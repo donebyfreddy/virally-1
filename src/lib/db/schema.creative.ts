@@ -86,14 +86,14 @@ export const generationProviders = pgTable(
  * A model offered by a provider, with the cost basis used to quote it.
  *
  * This table is AUTHORITATIVE at runtime. The in-code catalogues under
- * src/lib/creative/{magnific,muapi}/catalog.ts are seed data and the fallback
+ * src/lib/creative/{fal,magnific}/catalog.ts are seed data and the fallback
  * for an unseeded deployment — nothing reads them directly to make a routing
  * decision. That indirection is the whole point: the brief requires models to
  * be addable, retirable, renamable, repriceable and temporarily disable-able
  * without a deploy, and a hardcoded array cannot do any of those.
  *
  * `estimated_cents_per_unit` is our configured estimate, never a provider
- * quote — neither Magnific nor MuAPI returns a price at submit time, and MuAPI
+ * quote — neither fal nor Magnific returns a price at submit time, and fal
  * publishes none at all. `cost_basis` records which it is, so the estimator UI
  * cannot present a local guess as a vendor figure.
  */
@@ -155,7 +155,7 @@ export const generationModels = pgTable(
     /**
      * Nullable, unlike the column it replaces.
      *
-     * Null is "catalogued but unpriced", which is a real state for a MuAPI model
+     * Null is "catalogued but unpriced", which is a real state for a model
      * nobody has costed yet. An unpriced model is never routed to — the
      * estimator cannot quote it honestly and a credit reservation would have
      * nothing to reserve against. Defaulting it to 0 would make free-to-run the

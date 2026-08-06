@@ -387,7 +387,7 @@ export function ModelPicker({
   );
 }
 
-/** "12 credits per image · muapi · Text to image, Image to image" */
+/** "12 credits per image · fal · Text to image, Image to image" */
 function describe(model: GenerationModel, unitLabel: string): string {
   const capabilities = model.capabilities.map((entry) => CAPABILITY_LABELS[entry]).join(", ");
   return `${creditsPerUnit(model).toLocaleString("en-US")} credits ${unitLabel} · ${model.providerId} · ${capabilities}`;

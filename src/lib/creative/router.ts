@@ -1,8 +1,8 @@
 import type { GenerationCapability, GenerationModel } from "./capabilities";
 import { listModels as listCatalogModels } from "./catalog";
+import { FalProvider } from "./fal/provider";
 import { MagnificProvider } from "./magnific/provider";
 import { MockCreativeProvider } from "./mock";
-import { MuApiProvider } from "./muapi/provider";
 import type {
   CreativeGenerationProvider,
   GenerationKind,
@@ -15,9 +15,12 @@ import type { AspectRatio } from "@/types/database";
  * Provider selection.
  *
  * The router exists so that no page, server action or worker ever names a
- * provider. Magnific was the first implementation; MuAPI is the second, and
- * neither is a dependency — replacing either should be a change to the
- * candidate list and nothing else.
+ * provider. fal is the primary real provider; Magnific remains as a second,
+ * already-supported candidate — neither is a dependency of the other, and
+ * replacing either should be a change to the candidate list and nothing else.
+ * MuAPI was a third candidate and has been removed from the active flow
+ * entirely — see the router's git history, not a dead code path here, for
+ * what it looked like.
  *
  * Selection is deliberately explainable rather than clever. Every decision
  * returns the reason it was made, because "why did this run on the mock?" and
@@ -88,7 +91,9 @@ export class ProviderRouter {
     candidates?: readonly CreativeGenerationProvider[];
     mock?: CreativeGenerationProvider;
   } = {}) {
-    this.candidates = options.candidates ?? [new MagnificProvider(), new MuApiProvider()];
+    // fal first: it is the primary real provider. Magnific remains a second,
+    // already-supported candidate the router falls through to.
+    this.candidates = options.candidates ?? [new FalProvider(), new MagnificProvider()];
     this.mock = options.mock ?? new MockCreativeProvider();
   }
 
@@ -104,7 +109,7 @@ export class ProviderRouter {
    * polling that run must reach the same provider — not whatever the router
    * would pick today. Re-routing to answer this question was the previous
    * behaviour and it silently broke the moment a second provider existed: a
-   * MuAPI run would be polled against Magnific's client.
+   * run submitted to one provider would be polled against another's client.
    */
   providerById(providerId: string, modelId?: string | null): CreativeGenerationProvider | null {
     const found = this.allProviders().find((provider) => provider.id === providerId) ?? null;
@@ -114,8 +119,8 @@ export class ProviderRouter {
     // constructor state on both real adapters. Returning the shared instance
     // would let it re-select — and the quote the user accepted, the credits
     // reserved and the model actually run would then be three different things.
+    if (providerId === "fal") return new FalProvider({ modelId });
     if (providerId === "magnific") return new MagnificProvider({ modelId });
-    if (providerId === "muapi") return new MuApiProvider({ modelId });
     // The mock ignores model selection entirely, and any future provider is
     // returned unpinned rather than silently dropped.
     return found;

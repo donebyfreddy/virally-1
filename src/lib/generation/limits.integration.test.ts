@@ -121,8 +121,8 @@ async function inFlightRun(
 
 describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
   it("reads the capability-specific limit in preference to the provider-wide one", async () => {
-    const specific = await deps.limits.readLimits("muapi", "text-to-video");
-    const wide = await deps.limits.readLimits("muapi", "text-to-image");
+    const specific = await deps.limits.readLimits("fal", "text-to-video");
+    const wide = await deps.limits.readLimits("fal", "text-to-image");
 
     // Video is metered far more tightly than images. A single per-provider
     // figure is either too low for images or too high for video.
@@ -151,19 +151,19 @@ describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
 
   it("allows a workspace with nothing in flight", async () => {
     const scope = await freshScope();
-    expect((await deps.limits.checkConcurrency(scope, "muapi", "text-to-video")).allowed).toBe(
+    expect((await deps.limits.checkConcurrency(scope, "fal", "text-to-video")).allowed).toBe(
       true,
     );
   });
 
   it("refuses once the workspace reaches its own concurrency ceiling", async () => {
     const scope = await freshScope();
-    const limits = await deps.limits.readLimits("muapi", "text-to-video");
+    const limits = await deps.limits.readLimits("fal", "text-to-video");
     for (let i = 0; i < limits.maxConcurrentPerWorkspace; i += 1) {
-      await inFlightRun(scope, "muapi");
+      await inFlightRun(scope, "fal");
     }
 
-    const decision = await deps.limits.checkConcurrency(scope, "muapi", "text-to-video");
+    const decision = await deps.limits.checkConcurrency(scope, "fal", "text-to-video");
     expect(decision.allowed).toBe(false);
     if (decision.allowed) return;
     // Tells the user it is THEIR generations occupying the slots, not that the
@@ -174,34 +174,34 @@ describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
 
   it("counts only this workspace's runs, not another tenant's", async () => {
     const [mine, theirs] = await Promise.all([freshScope(), freshScope()]);
-    const limits = await deps.limits.readLimits("muapi", "text-to-video");
+    const limits = await deps.limits.readLimits("fal", "text-to-video");
 
     // The other tenant saturates their own share.
     for (let i = 0; i < limits.maxConcurrentPerWorkspace; i += 1) {
-      await inFlightRun(theirs, "muapi");
+      await inFlightRun(theirs, "fal");
     }
 
     // The load-bearing fairness assertion. If the per-workspace count leaked
     // across tenants, one busy workspace would lock out every other one.
-    expect((await deps.limits.checkConcurrency(mine, "muapi", "text-to-video")).allowed).toBe(
+    expect((await deps.limits.checkConcurrency(mine, "fal", "text-to-video")).allowed).toBe(
       true,
     );
   });
 
   it("does not count completed runs against the ceiling", async () => {
     const scope = await freshScope();
-    for (let i = 0; i < 10; i += 1) await inFlightRun(scope, "muapi", "completed");
+    for (let i = 0; i < 10; i += 1) await inFlightRun(scope, "fal", "completed");
 
     // A terminal run occupies nothing. Counting it would permanently throttle
     // any workspace that had ever generated.
-    expect((await deps.limits.checkConcurrency(scope, "muapi", "text-to-video")).allowed).toBe(
+    expect((await deps.limits.checkConcurrency(scope, "fal", "text-to-video")).allowed).toBe(
       true,
     );
   });
 
   it("counts a run in every non-terminal state, not just `generating`", async () => {
     const scope = await freshScope();
-    const limits = await deps.limits.readLimits("muapi", "lip-sync");
+    const limits = await deps.limits.readLimits("fal", "lip-sync");
 
     // `waiting_external` is the state a submitted job spends most of its life
     // in. Omitting it from the in-flight set would make the ceiling almost
@@ -210,7 +210,7 @@ describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
     await deps.db.insert(deps.schema.providerRuns).values({
       organizationId: scope.organizationId,
       workspaceId: scope.workspaceId,
-      providerId: "muapi",
+      providerId: "fal",
       model: "test-model",
       generationType: "video",
       inputPrompt: "test",
@@ -219,21 +219,21 @@ describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
       idempotencyKey: `limits-wx-${Date.now().toString(36)}-${runCounter}`,
     });
 
-    const decision = await deps.limits.checkConcurrency(scope, "muapi", "lip-sync");
+    const decision = await deps.limits.checkConcurrency(scope, "fal", "lip-sync");
     expect(limits.maxConcurrentPerWorkspace).toBe(1);
     expect(decision.allowed).toBe(false);
   });
 
   it("refuses once the submission rate is exceeded, and says when to retry", async () => {
     const scope = await freshScope();
-    const limits = await deps.limits.readLimits("muapi", "text-to-video");
+    const limits = await deps.limits.readLimits("fal", "text-to-video");
     // Completed, so this exercises the RATE window rather than concurrency —
     // the two are separate protections and must be separately assertable.
     for (let i = 0; i < limits.requestsPerMinute; i += 1) {
-      await inFlightRun(scope, "muapi", "completed");
+      await inFlightRun(scope, "fal", "completed");
     }
 
-    const decision = await deps.limits.checkSubmissionRate(scope, "muapi", "text-to-video");
+    const decision = await deps.limits.checkSubmissionRate(scope, "fal", "text-to-video");
     expect(decision.allowed).toBe(false);
     if (decision.allowed) return;
     expect(decision.retryAfterMs).toBe(60_000);
@@ -241,10 +241,10 @@ describe.skipIf(!HAS_DATABASE)("generation limits (integration)", () => {
 
   it("reports the rate problem before the concurrency one", async () => {
     const scope = await freshScope();
-    const limits = await deps.limits.readLimits("muapi", "text-to-video");
-    for (let i = 0; i < limits.requestsPerMinute; i += 1) await inFlightRun(scope, "muapi");
+    const limits = await deps.limits.readLimits("fal", "text-to-video");
+    for (let i = 0; i < limits.requestsPerMinute; i += 1) await inFlightRun(scope, "fal");
 
-    const decision = await deps.limits.checkGenerationLimits(scope, "muapi", "text-to-video");
+    const decision = await deps.limits.checkGenerationLimits(scope, "fal", "text-to-video");
     expect(decision.allowed).toBe(false);
     if (decision.allowed) return;
     // Both ceilings are breached. Going too fast is the cause; too many running

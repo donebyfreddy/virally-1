@@ -13,8 +13,8 @@ import {
 } from "@/lib/db/schema";
 import { kindForCapability, type GenerationModel } from "./capabilities";
 import { modelToRow } from "./catalog";
+import { FAL_MODELS } from "./fal/catalog";
 import { MAGNIFIC_MODELS_NORMALISED } from "./magnific/catalog";
-import { MUAPI_MODELS } from "./muapi/catalog";
 import { PRODUCTION_MODE_DEFAULTS } from "./modes";
 import { PLAN_DEFAULTS, TOP_UP_DEFAULTS } from "./plans";
 import { CREATIVE_ENV } from "./env";
@@ -83,18 +83,18 @@ export async function seedCreativeConfiguration(): Promise<SeedReport> {
       .insert(generationProviders)
       .values([
         {
+          id: "fal",
+          label: "fal.ai",
+          credentialEnvVar: CREATIVE_ENV.falApiKey,
+          rateLimitPerMinute: 60,
+          docsUrl: "https://docs.fal.ai",
+        },
+        {
           id: "magnific",
           label: "Magnific",
           credentialEnvVar: CREATIVE_ENV.magnificApiKey,
           rateLimitPerMinute: 60,
           docsUrl: "https://docs.magnific.com",
-        },
-        {
-          id: "muapi",
-          label: "MuAPI",
-          credentialEnvVar: CREATIVE_ENV.muapiApiKey,
-          rateLimitPerMinute: 60,
-          docsUrl: "https://muapi.ai/docs",
         },
         {
           /**
@@ -139,7 +139,7 @@ export async function seedCreativeConfiguration(): Promise<SeedReport> {
     const limits = await tx
       .insert(providerRateLimits)
       .values(
-        ["magnific", "muapi"].flatMap((providerId) => [
+        ["fal", "magnific"].flatMap((providerId) => [
           {
             providerId,
             capability: null,
@@ -184,7 +184,7 @@ export async function seedCreativeConfiguration(): Promise<SeedReport> {
     // describe models identically. `modelToRow` is the single mapping both this
     // and the runtime fallback go through, which is what keeps a seeded row and
     // a fallback row from differing in a field nobody thought to check.
-    const catalogue = [...MAGNIFIC_MODELS_NORMALISED, ...MUAPI_MODELS];
+    const catalogue = [...FAL_MODELS, ...MAGNIFIC_MODELS_NORMALISED];
     const models = await tx
       .insert(generationModels)
       .values(catalogue.map((model) => modelToRow(model, kindFor(model))))

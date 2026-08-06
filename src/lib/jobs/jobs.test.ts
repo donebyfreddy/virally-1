@@ -57,7 +57,7 @@ describe("pollDelayMs", () => {
   });
 
   it("falls back to the floor when the provider suggests nothing", () => {
-    // MuAPI gives no hint at all, so this is its every-generation path.
+    // fal gives no hint at all, so this is its every-generation path.
     expect(pollDelayMs(0)).toBe(2_000);
     expect(pollDelayMs(0, null)).toBe(2_000);
     expect(pollDelayMs(0, 0)).toBe(2_000);

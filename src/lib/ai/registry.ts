@@ -54,8 +54,8 @@ export type CapabilityState =
  */
 const CAPABILITY_ENV: Readonly<Record<Capability, readonly string[]>> = {
   language: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
-  image: ["FAL_KEY", "REPLICATE_API_TOKEN", "OPENAI_API_KEY"],
-  video: ["FAL_KEY", "REPLICATE_API_TOKEN"],
+  image: ["FAL_API_KEY", "REPLICATE_API_TOKEN", "OPENAI_API_KEY"],
+  video: ["FAL_API_KEY", "REPLICATE_API_TOKEN"],
   voice: ["ELEVENLABS_API_KEY"],
   transcription: ["OPENAI_API_KEY", "ELEVENLABS_API_KEY"],
   moderation: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"],

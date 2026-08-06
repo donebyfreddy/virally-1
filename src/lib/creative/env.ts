@@ -26,14 +26,8 @@
 export const CREATIVE_ENV = {
   magnificApiKey: "MAGNIFIC_API_KEY",
   magnificWebhookSecret: "MAGNIFIC_WEBHOOK_SECRET",
-  /**
-   * Upstream tooling calls this `MUAPI_KEY`; Virally does not.
-   *
-   * Named for consistency with `MAGNIFIC_API_KEY` because these variables are
-   * read side by side in every deployment checklist, and a set where one member
-   * breaks the pattern is the one an operator mistypes.
-   */
-  muapiApiKey: "MUAPI_API_KEY",
+  /** The primary real generation provider. Issue from https://fal.ai/dashboard/keys. */
+  falApiKey: "FAL_API_KEY",
 } as const;
 
 export type CreativeEnvVar = (typeof CREATIVE_ENV)[keyof typeof CREATIVE_ENV];
@@ -91,25 +85,25 @@ export function isMagnificWebhookConfigured(): boolean {
 }
 
 /**
- * The MuAPI key, for the HTTP client in src/lib/creative/muapi/ only.
+ * The fal.ai key, for the HTTP client in src/lib/creative/fal/ only.
  *
  * Not exported from src/lib/creative/index.ts, for the same reason
  * `magnificApiKey` is not: call sites need to know *whether* generation is
  * possible, never the credential.
  */
-export function muapiApiKey(): string | undefined {
-  return readSecret(CREATIVE_ENV.muapiApiKey);
+export function falApiKey(): string | undefined {
+  return readSecret(CREATIVE_ENV.falApiKey);
 }
 
-export function isMuApiConfigured(): boolean {
-  return muapiApiKey() !== undefined;
+export function isFalConfigured(): boolean {
+  return falApiKey() !== undefined;
 }
 
 /**
  * Per-provider configuration state.
  *
  * Validated separately per provider, and deliberately not aggregated into a
- * single boolean: a deployment with Magnific but not MuAPI is a normal, fully
+ * single boolean: a deployment with fal but not Magnific is a normal, fully
  * working configuration, and one overall "generation available" flag would
  * force the settings UI to either overstate or understate what is actually
  * possible.
@@ -137,24 +131,24 @@ function magnificDetail(): string {
 export function describeProviderEnv(): readonly ProviderEnvStatus[] {
   return [
     {
+      providerId: "fal",
+      label: "fal.ai",
+      credentialEnvVar: CREATIVE_ENV.falApiKey,
+      configured: isFalConfigured(),
+      detail: isFalConfigured()
+        ? // Stated plainly rather than left implicit: this adapter does not
+          // verify fal's webhook signature scheme, so completions are detected
+          // by polling only — there is no inbound callback wired up at all,
+          // unlike Magnific's or the removed MuAPI adapter's webhook routes.
+          "Configured for generation. Completions are detected by polling."
+        : `Provider configuration required. Set ${CREATIVE_ENV.falApiKey} to enable fal.ai.`,
+    },
+    {
       providerId: "magnific",
       label: "Magnific",
       credentialEnvVar: CREATIVE_ENV.magnificApiKey,
       configured: isMagnificConfigured(),
       detail: magnificDetail(),
-    },
-    {
-      providerId: "muapi",
-      label: "MuAPI",
-      credentialEnvVar: CREATIVE_ENV.muapiApiKey,
-      configured: isMuApiConfigured(),
-      detail: isMuApiConfigured()
-        ? // Stated plainly because it is a real operational difference from
-          // Magnific, not a limitation of the adapter: MuAPI publishes no
-          // webhook signature scheme, so an inbound webhook cannot be
-          // authenticated and is therefore never trusted as a state transition.
-          "Configured for generation. MuAPI publishes no webhook signature scheme, so completions are detected by polling; an inbound webhook only schedules an earlier poll."
-        : `Provider configuration required. Set ${CREATIVE_ENV.muapiApiKey} to enable MuAPI.`,
     },
   ];
 }
@@ -181,16 +175,31 @@ export type CreativeEnvStatus = {
  *
  * The brief requires unconfigured features to report "Provider configuration
  * required" rather than failing. This is the string they read.
+ *
+ * fal is checked first because it is the primary provider: a deployment with
+ * only fal configured is the common case this reports on, and Magnific is
+ * checked only when fal is absent, not merged with it — the two are unrelated
+ * credentials, and a deployment could have either, both, or neither.
  */
 export function describeCreativeEnv(): CreativeEnvStatus {
-  const generation = isMagnificConfigured();
+  if (isFalConfigured()) {
+    return {
+      generation: true,
+      // fal's webhook signature is not verified by this adapter; polling is
+      // the only completion path, so there is nothing to report as verified.
+      webhooks: false,
+      detail: "fal.ai is configured for generation. Completions are detected by polling.",
+    };
+  }
+
+  const magnificGeneration = isMagnificConfigured();
   const webhooks = isMagnificWebhookConfigured();
 
-  if (!generation) {
+  if (!magnificGeneration) {
     return {
       generation: false,
       webhooks: false,
-      detail: `Provider configuration required. ${CREATIVE_ENV.magnificApiKey} is not set, so generation runs against the deterministic mock and every output is labelled as demo. Campaign planning, editing and scheduling are unaffected.`,
+      detail: `Provider configuration required. Set ${CREATIVE_ENV.falApiKey} to enable real generation. Until then, generation runs against the deterministic mock and every output is labelled as demo. Campaign planning, editing and scheduling are unaffected.`,
     };
   }
 

@@ -98,7 +98,7 @@ export const usageCopy = {
 
   unmeteredTitle: "No provider configured",
   unmeteredBody:
-    "MAGNIFIC_API_KEY is not set, so generation runs against a deterministic mock and reserves nothing. The figures below are real ledger entries; they simply have nothing to record yet.",
+    "No generation provider is configured, so generation runs against a deterministic mock and reserves nothing. The figures below are real ledger entries; they simply have nothing to record yet.",
 
   /** Reservation purposes, in the user's vocabulary rather than the schema's. */
   purposeLabels: {

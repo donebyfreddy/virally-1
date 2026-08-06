@@ -1,4 +1,4 @@
-import { Bricolage_Grotesque, Geist, JetBrains_Mono } from "next/font/google";
+import { Bricolage_Grotesque, Geist, JetBrains_Mono, Poppins } from "next/font/google";
 
 /**
  * Three typographic roles, four weights total across the whole site.
@@ -46,3 +46,19 @@ export const fontVariables = [
   fontBody.variable,
   fontUtility.variable,
 ].join(" ");
+
+/**
+ * Scoped to the replaced Navbar/Hero only — not part of the site's three-role
+ * type system and deliberately not added to `fontVariables`. Loaded via
+ * `next/font` (instead of a runtime `@import`) purely so it doesn't block
+ * render; the font choice itself is a one-off design decision for those two
+ * components.
+ */
+export const fontPoppins = Poppins({
+  variable: "--font-poppins",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  display: "swap",
+  preload: true,
+  fallback: ["ui-sans-serif", "system-ui", "sans-serif"],
+});

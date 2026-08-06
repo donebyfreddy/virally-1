@@ -87,16 +87,16 @@ export { ProviderRouter, getProviderRouter, routeFor } from "./router";
 export type { RouteDecision, RouteRequest } from "./router";
 
 export { MockCreativeProvider, DEMO_OUTPUT_LABEL, DEMO_OUTPUT_EXPLANATION } from "./mock";
+export { FalProvider } from "./fal/provider";
 export { MagnificProvider } from "./magnific/provider";
-export { MuApiProvider } from "./muapi/provider";
 
 export {
   describeCreativeEnv,
   describeProviderEnv,
   isAnyProviderConfigured,
+  isFalConfigured,
   isMagnificConfigured,
   isMagnificWebhookConfigured,
-  isMuApiConfigured,
 } from "./env";
 export type { CreativeEnvStatus, ProviderEnvStatus } from "./env";
 

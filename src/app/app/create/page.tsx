@@ -17,8 +17,7 @@ import { brands } from "@/lib/db/schema";
 import { campaigns, connectedAccounts } from "@/lib/db/schema.fragment";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { can } from "@/lib/permissions";
-import { isMockOnly } from "@/lib/ai/registry";
-import { isMagnificConfigured } from "@/lib/creative";
+import { isAnyProviderConfigured } from "@/lib/creative";
 import { readBalance } from "@/lib/creative/credits";
 import { tenantScope } from "@/lib/creative/scope";
 import { createCampaign } from "@/lib/content/actions";
@@ -118,7 +117,7 @@ export default async function CreatePage({
   // With no generation provider configured the batch runs on the mock and
   // reserves nothing, so the composer must not block submission on a zero
   // balance or claim credits will be deducted.
-  const unmetered = !isMagnificConfigured();
+  const unmetered = !isAnyProviderConfigured();
 
   return (
     <AppPage>
@@ -145,7 +144,7 @@ export default async function CreatePage({
         {/* Stated before the user spends anything, not after they see the
             output. Info-toned rather than a warning: nothing is wrong, the
             provenance of what comes out is simply different. */}
-        {isMockOnly() && (
+        {unmetered && (
           <div
             className={cn(
               "flex max-w-[60ch] gap-[var(--space-3)] rounded-[var(--radius-card)]",

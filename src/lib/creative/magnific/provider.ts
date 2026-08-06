@@ -86,7 +86,7 @@ export class MagnificProvider implements CreativeGenerationProvider {
    *
    * Derived from `MAGNIFIC_MODELS` rather than maintained as a second list, so
    * the two cannot drift. Injectable via the constructor for the same reason
-   * the MuAPI adapter's is: the authoritative catalogue at runtime is
+   * the fal adapter's is: the authoritative catalogue at runtime is
    * `generation_models` in Neon, and the shipped array is the seed.
    */
   async listModels(capability?: GenerationCapability): Promise<readonly GenerationModel[]> {

@@ -8,15 +8,15 @@ import {
   type GenerationInputType,
   type GenerationModel,
 } from "./capabilities";
+import { FAL_MODELS } from "./fal/catalog";
 import { MAGNIFIC_MODELS_NORMALISED } from "./magnific/catalog";
-import { MUAPI_MODELS } from "./muapi/catalog";
 import type { GenerationKind, ProductionMode } from "./types";
 
 /**
  * The model catalogue, read from Neon.
  *
  * `generation_models` is authoritative at runtime. The in-code catalogues under
- * magnific/ and muapi/ are seed data and the unseeded-deployment fallback, and
+ * fal/ and magnific/ are seed data and the unseeded-deployment fallback, and
  * nothing outside the seeder reads them to make a routing decision.
  *
  * That indirection is the entire point of this module. The brief requires the
@@ -327,5 +327,5 @@ function asNumberArray(value: unknown): number[] {
  * become the thing a routing decision is made against.
  */
 export function seedCatalog(): readonly GenerationModel[] {
-  return [...MAGNIFIC_MODELS_NORMALISED, ...MUAPI_MODELS];
+  return [...FAL_MODELS, ...MAGNIFIC_MODELS_NORMALISED];
 }

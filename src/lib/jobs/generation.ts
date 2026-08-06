@@ -196,7 +196,7 @@ async function pollPhase(
   await awaitExternal(
     job.id,
     new Date(Date.now() + pollDelayMs(pollCount, payload.suggestedPollMs)),
-    // Progress is only written when the provider reported one. MuAPI never
+    // Progress is only written when the provider reported one. fal never
     // does, so its jobs keep whatever the submit phase set and the UI renders
     // an indeterminate indicator rather than a bar frozen at a made-up number.
     poll.progress !== null ? { progress: poll.progress } : {},

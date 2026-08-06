@@ -35,7 +35,7 @@ import {
 import { estimateBatch, creditsForGate, type GenerationGateId } from "@/lib/creative/estimator";
 import { DEFAULT_PRODUCTION_MODE } from "@/lib/creative/modes";
 import type { ProductionMode } from "@/lib/creative/types";
-import { isMagnificConfigured } from "@/lib/creative/env";
+import { isAnyProviderConfigured } from "@/lib/creative/env";
 import { InsufficientCreditsError, reserveCredits } from "@/lib/creative/credits";
 import { tenantScope } from "@/lib/creative/scope";
 
@@ -266,7 +266,7 @@ export async function createCampaign(formData: FormData): Promise<void> {
    * batch cost for a "plan only" run would withhold credits for work the user
    * explicitly declined to start.
    */
-  if (isMagnificConfigured()) {
+  if (isAnyProviderConfigured()) {
     const gate = (VALID_GATES.has(stage as GenerationGateId) ? stage : "plan") as GenerationGateId;
     const credits = creditsForGate(modeEstimate, gate);
 
