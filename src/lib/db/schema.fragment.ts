@@ -442,6 +442,26 @@ export const contentItems = pgTable(
 
     origin: outputOriginEnum('origin').notNull().default('mock'),
 
+    /**
+     * Fields a campaign-authored item gets for free elsewhere and a standalone
+     * one has nowhere else to keep. From: 0016_quick_content.sql.
+     *
+     * `tone` mirrors `campaign_briefs.tone` — there is no brief row for
+     * standalone content, since `campaign_briefs.campaign_id` is NOT NULL.
+     * `productionMode` mirrors the batch-level mode a campaign chooses once for
+     * all its items; a standalone item chooses its own.
+     */
+    tone: text('tone'),
+    productionMode: text('production_mode').$type<'fast' | 'hybrid' | 'cinematic'>(),
+    /**
+     * The plan the user reviewed and confirmed before paid generation started —
+     * structure, hook, per-asset counts. A snapshot, not recomputed on read, so
+     * the credits actually reserved always match what the user actually saw.
+     */
+    generationPlan: jsonb('generation_plan'),
+    estimatedCredits: integer('estimated_credits').notNull().default(0),
+    actualCredits: integer('actual_credits').notNull().default(0),
+
     // Optimistic-concurrency token for the studio's autosave.
     revision: integer('revision').notNull().default(1),
 
@@ -462,6 +482,15 @@ export const contentItems = pgTable(
       sql`duration_ms is null or duration_ms > 0`,
     ),
     revisionCheck: check('content_items_revision_check', sql`revision >= 1`),
+    productionModeCheck: check(
+      'content_items_production_mode_check',
+      sql`production_mode is null or production_mode in ('fast', 'hybrid', 'cinematic')`,
+    ),
+    estimatedCreditsCheck: check(
+      'content_items_estimated_credits_check',
+      sql`estimated_credits >= 0`,
+    ),
+    actualCreditsCheck: check('content_items_actual_credits_check', sql`actual_credits >= 0`),
     workspaceStatusIdx: index('content_items_workspace_status_idx')
       .on(table.workspaceId, table.status, desc(table.updatedAt))
       .where(sql`deleted_at is null`),

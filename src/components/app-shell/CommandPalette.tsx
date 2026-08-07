@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import { can } from "@/lib/permissions";
 import { searchGlobalEntities } from "@/lib/search/actions";
 import type { GlobalSearchResult, GlobalSearchResultKind } from "@/lib/search/types";
-import { navItems } from "@/content/app-navigation";
+import { createAction, navItems } from "@/content/app-navigation";
 import type { SwitcherOption } from "./Switcher";
 
 /**
@@ -43,6 +43,14 @@ type Command = {
 };
 
 type SearchState = "idle" | "loading" | "ready" | "error";
+
+/** Per-item hints for `createAction.items`, keyed by item id. */
+const CREATE_ITEM_HINTS: Readonly<Record<string, string>> = {
+  quick: "One piece of content, minimal setup",
+  campaign: "Plan and create multiple pieces of content",
+  image: "Generate a raw image asset",
+  video: "Generate a raw video asset",
+};
 
 export function CommandPalette({
   role,
@@ -87,13 +95,15 @@ export function CommandPalette({
     }
 
     if (can(role, "content.create")) {
-      list.push({
-        id: "action:create-campaign",
-        label: "Create campaign",
-        hint: "Start from a prompt, URL or upload",
-        group: "Create",
-        run: () => router.push("/app/create"),
-      });
+      for (const item of createAction.items) {
+        list.push({
+          id: `action:create-${item.id}`,
+          label: `Create ${item.label.toLowerCase()}`,
+          hint: CREATE_ITEM_HINTS[item.id] ?? "Start from a prompt, URL or upload",
+          group: "Create",
+          run: () => router.push(item.href),
+        });
+      }
     }
     if (can(role, "accounts.connect")) {
       list.push({

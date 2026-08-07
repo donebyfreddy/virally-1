@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { ChevronRight, Info, Lock } from "lucide-react";
-import { Composer } from "@/components/create/Composer";
+import { CreatePageClient } from "@/components/create/CreatePageClient";
 import { AppPage, PageStack } from "@/components/app-ui/AppPage";
 import { PageHeader } from "@/components/app-ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/app-ui/Card";
@@ -20,7 +20,6 @@ import { can } from "@/lib/permissions";
 import { isAnyProviderConfigured } from "@/lib/creative";
 import { readBalance } from "@/lib/creative/credits";
 import { tenantScope } from "@/lib/creative/scope";
-import { createCampaign } from "@/lib/content/actions";
 import { signInPathFor } from "@/lib/auth/routes";
 import { relativeDay } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -59,6 +58,8 @@ export default async function CreatePage({
   const { context } = resolution;
   const params = await searchParams;
   const errorCode = Array.isArray(params.error) ? params.error[0] : params.error;
+  const rawMode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const initialMode = rawMode === "campaign" ? "campaign" : "quick";
 
   // Server-side gate, not just a hidden nav item.
   if (!can(context.role, "content.create")) {
@@ -168,8 +169,8 @@ export default async function CreatePage({
           </div>
         )}
 
-        <Composer
-          onSubmit={createCampaign}
+        <CreatePageClient
+          initialMode={initialMode}
           accountCount={accountCount}
           defaultLanguage={brandRows[0]?.primaryLanguage ?? "en"}
           creditsAvailable={balance.available}

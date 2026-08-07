@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -23,6 +23,7 @@ import { StatusChip } from "@/components/app-ui/StatusChip";
 import { Button } from "@/components/primitives/Button";
 import { ASSET_KIND_LABELS } from "@/content/content-library";
 import { PLATFORM_OPTIONS } from "@/content/create";
+import { addContentToCampaign } from "@/lib/content/actions";
 import {
   editorCopy,
   INSPECTOR_TABS,
@@ -129,11 +130,14 @@ export function EditorShell({
   variants,
   segments,
   assets,
+  availableCampaigns = [],
 }: {
   item: EditorItem;
   variants: readonly EditorVariant[];
   segments: readonly EditorSegment[];
   assets: readonly EditorAsset[];
+  /** Campaigns this workspace has, for "Add to campaign". Empty when there are none. */
+  availableCampaigns?: readonly { id: string; name: string }[];
 }) {
   const [activeVariantId, setActiveVariantId] = useState<string | null>(variants[0]?.id ?? null);
   const [tab, setTab] = useState<InspectorTabId>("script");
@@ -160,7 +164,7 @@ export function EditorShell({
 
   return (
     <div className="flex flex-col gap-[var(--app-panel-gap)]">
-      <EditorHeader item={item} />
+      <EditorHeader item={item} availableCampaigns={availableCampaigns} />
 
       {/* Pane switcher — narrow viewports only. A segmented control on the muted
           track, matching the grid/table toggle on the list pages. */}
@@ -543,7 +547,13 @@ export function EditorShell({
  * dominate and a 32px headline above a video canvas competes with it. Heading
  * LEVEL is still h1 — the size is a visual decision, not a semantic one.
  */
-function EditorHeader({ item }: { item: EditorItem }) {
+function EditorHeader({
+  item,
+  availableCampaigns,
+}: {
+  item: EditorItem;
+  availableCampaigns: readonly { id: string; name: string }[];
+}) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-[var(--space-3)]">
       <div className="min-w-0">
@@ -561,7 +571,7 @@ function EditorHeader({ item }: { item: EditorItem }) {
             {editorCopy.backToContent}
           </Link>
 
-          {item.campaignId && (
+          {item.campaignId ? (
             <>
               <span aria-hidden="true">·</span>
               <Link
@@ -576,6 +586,13 @@ function EditorHeader({ item }: { item: EditorItem }) {
                 {item.campaignName ?? "Campaign"}
               </Link>
             </>
+          ) : (
+            availableCampaigns.length > 0 && (
+              <>
+                <span aria-hidden="true">·</span>
+                <AddToCampaignControl contentId={item.id} campaigns={availableCampaigns} />
+              </>
+            )
           )}
         </p>
 
@@ -618,6 +635,70 @@ function EditorHeader({ item }: { item: EditorItem }) {
         </Button>
       </div>
     </header>
+  );
+}
+
+/**
+ * "Add to campaign" for standalone content.
+ *
+ * A native `<select>` that submits on change rather than a button that opens
+ * a picker: the choice IS the action here — there is no second confirmation
+ * step, and a select with a real label gives the keyboard and screen-reader
+ * behaviour for free that a custom listbox would have to rebuild.
+ */
+function AddToCampaignControl({
+  contentId,
+  campaigns,
+}: {
+  contentId: string;
+  campaigns: readonly { id: string; name: string }[];
+}) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <span className="inline-flex items-center gap-[var(--space-2)]">
+      <label htmlFor="add-to-campaign" className="sr-only">
+        Add to campaign
+      </label>
+      <select
+        id="add-to-campaign"
+        disabled={pending}
+        defaultValue=""
+        onChange={(event) => {
+          const campaignId = event.target.value;
+          if (!campaignId) return;
+          setError(null);
+          startTransition(async () => {
+            const result = await addContentToCampaign(contentId, campaignId);
+            if (!result.ok) {
+              setError(result.error);
+              event.target.value = "";
+            }
+          });
+        }}
+        className={cn(
+          "min-h-11 rounded-[var(--radius-chip)] border-0 bg-transparent",
+          "text-[length:var(--text-app-meta)] text-[color:var(--text-muted)] underline decoration-dotted",
+          "hover:text-[color:var(--text-primary)]",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+        )}
+      >
+        <option value="" disabled>
+          {pending ? "Adding…" : "Add to campaign"}
+        </option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <span role="alert" className="text-[length:var(--text-app-label)] text-[color:var(--error)]">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }
 

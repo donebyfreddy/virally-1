@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { jobs } from "@/lib/db/schema";
+import { jobs, providerRunOutputs } from "@/lib/db/schema";
 import { pollRun, submitGeneration, type SubmitInput } from "@/lib/creative/pipeline";
 import { tenantScope } from "@/lib/creative/scope";
+import { attachAssetToCampaign, attachAssetToShot } from "@/lib/generation/attach";
 import { linkRunToReservation } from "@/lib/generation/service";
 import { MAX_JOB_AGE_MS, pollDelayMs } from "./backoff";
 import {
@@ -66,6 +67,16 @@ export type GenerationJobPayload = {
   pollCount?: number;
   suggestedPollMs?: number | null;
   allowMockFallback?: boolean;
+
+  /**
+   * Attachment. Carried through from `GenerationRequest` (service.ts) so the
+   * worker can wire a completed asset into the thing that asked for it —
+   * `attach.ts`'s functions exist for exactly this, but nothing called them
+   * automatically until this field reached the completion handler below.
+   */
+  campaignId?: string | null;
+  contentItemId?: string | null;
+  shotId?: string | null;
 };
 
 export type HandlerResult =
@@ -170,6 +181,7 @@ async function pollPhase(
 
   if (poll.terminal) {
     if (poll.state === "completed") {
+      await attachCompletedAssets(scope, runId, payload);
       await completeJob(job.id, { providerRunId: runId, state: poll.state });
       return { outcome: "completed", runId };
     }
@@ -203,6 +215,64 @@ async function pollPhase(
   );
 
   return { outcome: "polling", runId, state: poll.state };
+}
+
+/**
+ * Wires a completed run's asset(s) into whatever asked for them.
+ *
+ * `ingestRunOutputs` (pipeline.ts) copies provider bytes into Virally storage
+ * and creates the `media_assets` rows, but it has no idea what the generation
+ * was FOR — attaching it to a campaign, a content item or a shot is a
+ * decision the caller made at submit time, not something ingestion can infer.
+ * That decision travelled all the way through the job payload for exactly
+ * this moment.
+ *
+ * Best-effort and non-fatal: the generation itself already succeeded and the
+ * user was already charged for it. An attach failure here should surface as a
+ * media asset sitting unfiled in the library, not as a completed generation
+ * reported as failed.
+ */
+async function attachCompletedAssets(
+  scope: ReturnType<typeof tenantScope>,
+  runId: string,
+  payload: GenerationJobPayload,
+): Promise<void> {
+  if (!payload.campaignId && !payload.contentItemId && !payload.shotId) return;
+
+  try {
+    const outputs = await db
+      .select({ mediaAssetId: providerRunOutputs.mediaAssetId })
+      .from(providerRunOutputs)
+      .where(
+        and(
+          eq(providerRunOutputs.providerRunId, runId),
+          eq(providerRunOutputs.workspaceId, scope.workspaceId),
+        ),
+      );
+
+    const assetIds = outputs
+      .map((row) => row.mediaAssetId)
+      .filter((id): id is string => id !== null);
+
+    for (const assetId of assetIds) {
+      if (payload.campaignId || payload.contentItemId) {
+        await attachAssetToCampaign(scope, assetId, {
+          campaignId: payload.campaignId ?? null,
+          contentItemId: payload.contentItemId ?? null,
+        });
+      }
+    }
+
+    // A shot holds exactly one asset. The first output is the one that fills
+    // it; a model that returns several outputs for one shot is not a case any
+    // catalogued model produces today.
+    const [firstAssetId] = assetIds;
+    if (payload.shotId && firstAssetId) {
+      await attachAssetToShot(scope, payload.shotId, firstAssetId);
+    }
+  } catch (error) {
+    console.error(`[jobs/generation] Could not attach the completed asset for run ${runId}.`, error);
+  }
 }
 
 /**

@@ -136,8 +136,12 @@ export function MobileNav({ role }: { role: MemberRole }) {
             </div>
 
             <div className="border-b border-[var(--border-default)] p-[var(--space-3)]">
+              {/* Links straight to the create page rather than opening the
+                  sidebar's menu — a dropdown-over-a-drawer is awkward on
+                  mobile, and the page itself leads with the same Quick
+                  Content / Campaign choice the menu offers. */}
               <Link
-                href={createAction.href}
+                href="/app/create"
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex min-h-11 items-center justify-center gap-[var(--space-2)] rounded-[var(--radius-control)]",

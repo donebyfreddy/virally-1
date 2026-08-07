@@ -65,14 +65,20 @@ export const navItems: readonly NavItem[] = [
 /**
  * The persistent create action, kept out of `navItems` so it renders as a button.
  *
- * Labelled "New campaign" rather than "Create": the sidebar already has a
- * Create destination, and two adjacent controls both reading "Create" gives no
- * clue that one navigates and one starts something.
+ * Opens a menu rather than navigating directly — the sidebar's "Create" nav
+ * item still goes straight to `/app/create`, so the two read differently even
+ * though both say "Create": one is a destination, the other is a shortcut
+ * that does not assume Campaign is what you want.
  */
 export const createAction = {
-  label: "New campaign",
-  href: "/app/create",
+  label: "Create",
   shortcut: "C",
+  items: [
+    { id: "quick", label: "Quick content", href: "/app/create?mode=quick" },
+    { id: "campaign", label: "Campaign", href: "/app/create?mode=campaign" },
+    { id: "image", label: "Image", href: "/app/generate/image" },
+    { id: "video", label: "Video", href: "/app/generate/video" },
+  ],
 } as const;
 
 export const shellCopy = {

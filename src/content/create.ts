@@ -1,4 +1,4 @@
-import type { AspectRatio, GenerationMode, Platform } from "@/types/database";
+import type { AspectRatio, Platform } from "@/types/database";
 
 /**
  * Create-page copy and option sets.
@@ -9,7 +9,7 @@ import type { AspectRatio, GenerationMode, Platform } from "@/types/database";
 
 export const createCopy = {
   heading: "What do you want to create?",
-  body: "Describe the campaign, or point Virally at a URL, a document or existing footage. Nothing is generated until you confirm — the default is to produce plans first.",
+  body: "Quick Content makes one piece of content directly. Campaign plans several around one objective. Nothing is generated until you confirm — the default is to produce plans first.",
   promptLabel: "Campaign brief",
   promptHint:
     "What it is about, who it is for, and what you want out of it. Specific beats clever.",
@@ -22,18 +22,47 @@ export const createCopy = {
   ],
 } as const;
 
-export const GENERATION_MODES: readonly {
-  id: GenerationMode;
-  label: string;
-  detail: string;
-}[] = [
-  { id: "quick", label: "Quick create", detail: "One idea, minimal configuration." },
-  { id: "campaign", label: "Campaign", detail: "Several concepts across a date range." },
-  { id: "repurpose", label: "Repurpose", detail: "Turn existing footage into short-form." },
-  { id: "product", label: "Product campaign", detail: "Organic and ad content for a product." },
-  { id: "account_launch", label: "Account launch", detail: "A launch kit and a first content plan." },
-  { id: "batch_studio", label: "Batch studio", detail: "Many structured variants at once." },
-];
+/**
+ * The entry choice at the top of `/app/create`.
+ *
+ * Quick Content is the default for new users: one piece of content is the more
+ * common ask, and the campaign form's sixteen fields answer questions ("how
+ * many concepts", "which languages") a single-item request has no use for.
+ */
+export const creationModeCopy = {
+  heading: "What do you want to create?",
+  quick: {
+    label: "Quick Content",
+    detail: "Create one post, reel, video, image or other individual asset.",
+  },
+  campaign: {
+    label: "Campaign",
+    detail: "Plan and create multiple pieces of content around one objective.",
+  },
+} as const;
+
+export const quickContentCopy = {
+  promptLabel: "What do you want to create?",
+  promptPlaceholder: "Create a 30-second TikTok reel about hidden beaches in Thailand.",
+  promptHint: "Describe the one piece of content you want. Be as specific as you like.",
+  contentTypeLabel: "Content type",
+  platformLabel: "Platform",
+  formatLabel: "Format",
+  formatHint: "Derived from the platform. Override it if you need something else.",
+  durationLabel: "Duration",
+  toneLabel: "Tone",
+  productionModeLabel: "Production mode",
+  advancedLabel: "Advanced settings",
+  includeLabel: "Include",
+  planSubmitLabel: "Generate plan",
+  generateSubmitLabel: "Generate content",
+  backLabel: "Edit brief",
+  planHeading: "Content plan",
+  planHookLabel: "Hook",
+  planStructureLabel: "Structure",
+  planAssetsLabel: "Assets",
+  confirmHint: "Review the plan and cost above. Generation starts only once you confirm.",
+} as const;
 
 export const SOURCE_KINDS = [
   { id: "prompt", label: "Prompt", detail: "Describe it in words", available: true },

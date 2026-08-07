@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { TriangleAlert } from "lucide-react";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
@@ -16,6 +17,7 @@ import {
 import { AppPage } from "@/components/app-ui/AppPage";
 import { EditorShell } from "@/components/editor/EditorShell";
 import { CONTENT_TYPE_LABELS } from "@/content/content-library";
+import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +65,16 @@ export async function generateMetadata({
  */
 export default async function ContentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ contentId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { contentId } = await params;
+  const rawPartialErrors = (await searchParams).partialErrors;
+  const partialErrorCount = Number(
+    Array.isArray(rawPartialErrors) ? rawPartialErrors[0] : rawPartialErrors,
+  );
 
   const session = await readSession();
   if (session.status === "unconfigured") redirect(PRODUCT_HOME);
@@ -107,7 +115,7 @@ export default async function ContentDetailPage({
 
   if (!item) notFound();
 
-  const [variants, scriptRows, assets] = await Promise.all([
+  const [variants, scriptRows, assets, availableCampaigns] = await Promise.all([
     db
       .select({
         id: contentVariants.id,
@@ -161,6 +169,18 @@ export default async function ContentDetailPage({
         ),
       )
       .orderBy(asc(mediaAssets.createdAt)),
+
+    // Only fetched for standalone content — an item that already belongs to a
+    // campaign has nowhere to put "Add to campaign", so there is nothing for
+    // this list to feed.
+    item.campaignId
+      ? Promise.resolve([])
+      : db
+          .select({ id: campaigns.id, name: campaigns.name })
+          .from(campaigns)
+          .where(and(eq(campaigns.workspaceId, context.workspaceId), isNull(campaigns.deletedAt)))
+          .orderBy(desc(campaigns.updatedAt))
+          .limit(50),
   ]);
 
   // Segments arrive as a left join, so a script with no segments yields one row
@@ -178,6 +198,37 @@ export default async function ContentDetailPage({
 
   return (
     <AppPage width="full">
+      {/* From Quick Content's generate step: some assets started (and reserved
+          real credits) before one was refused. Shown here, not as a blocking
+          error on the form, because the content this page is for already
+          exists and already has assets in flight — the notice is a status,
+          not something the user needs to resolve to proceed. */}
+      {Number.isFinite(partialErrorCount) && partialErrorCount > 0 && (
+        <div
+          className={cn(
+            "mb-[var(--app-panel-gap)] flex items-start gap-[var(--space-3)] rounded-[var(--radius-card)]",
+            "border border-[var(--warning-mark)] bg-[var(--warning-soft)]",
+            "px-[var(--app-panel-pad)] py-[var(--space-4)]",
+          )}
+        >
+          <TriangleAlert
+            aria-hidden="true"
+            size={16}
+            strokeWidth={2}
+            className="mt-0.5 shrink-0 text-[color:var(--warning)]"
+          />
+          <div className="min-w-0">
+            <p className="text-[length:var(--text-app-cell)] font-[var(--weight-heading)] text-[color:var(--warning)]">
+              Some assets could not be generated
+            </p>
+            <p className="mt-1 max-w-[70ch] text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
+              {partialErrorCount} of the assets this plan called for did not start. The rest
+              did, and reserved credits as usual — see what came through below.
+            </p>
+          </div>
+        </div>
+      )}
+
       <EditorShell
         item={{
           id: item.id,
@@ -197,6 +248,7 @@ export default async function ContentDetailPage({
         variants={variants}
         segments={segments}
         assets={assets}
+        availableCampaigns={availableCampaigns}
       />
     </AppPage>
   );

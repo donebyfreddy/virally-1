@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { AspectRatio, Platform } from "@/types/database";
 import { readSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
@@ -12,6 +12,7 @@ import {
   campaigns,
   contentConcepts,
   contentHooks,
+  contentItems,
   generationRuns,
   activityEvents,
 } from "@/lib/db/schema.fragment";
@@ -38,6 +39,7 @@ import type { ProductionMode } from "@/lib/creative/types";
 import { isAnyProviderConfigured } from "@/lib/creative/env";
 import { InsufficientCreditsError, reserveCredits } from "@/lib/creative/credits";
 import { tenantScope } from "@/lib/creative/scope";
+import { deriveName } from "./naming";
 
 /**
  * Campaign creation.
@@ -447,15 +449,82 @@ export async function createCampaign(formData: FormData): Promise<void> {
   redirect(`/app/campaigns/${campaign.id}`);
 }
 
+export type AddToCampaignResult = { ok: true; campaignName: string } | { ok: false; error: string };
+
 /**
- * Derives a campaign name from the brief.
+ * Attaches a standalone content item to an existing campaign.
  *
- * Trimmed to a readable title rather than left as a 400-character prompt, which makes
- * every list unreadable. The full text is preserved on the brief.
+ * Sets `campaign_id` on the row that already exists — it does not duplicate
+ * the item, does not re-run generation, and does not touch anything already
+ * generated for it. The brief's "Add to campaign" is exactly this: an
+ * association, not a copy.
+ *
+ * Refuses when the item already belongs to a different campaign rather than
+ * silently moving it — a content item switching campaigns is a decision a
+ * user should make explicitly from the campaign it is leaving, not a side
+ * effect of adding it somewhere else.
  */
-function deriveName(prompt: string): string {
-  const firstSentence = prompt.split(/[.!?\n]/)[0]?.trim() ?? prompt;
-  const cleaned = firstSentence.replace(/^(create|make|generate|build|write)\s+/i, "").trim();
-  const name = cleaned.length > 0 ? cleaned : prompt;
-  return name.length > 90 ? `${name.slice(0, 87)}…` : name;
+export async function addContentToCampaign(
+  contentId: string,
+  campaignId: string,
+): Promise<AddToCampaignResult> {
+  const session = await readSession();
+  if (session.status !== "authenticated") return { ok: false, error: "Sign in to continue." };
+
+  const resolution = await resolveTenantContext(session.user);
+  if (resolution.status !== "ok") return { ok: false, error: "This workspace is not ready yet." };
+  const { context } = resolution;
+
+  if (!can(context.role, "content.create")) {
+    return { ok: false, error: "Your role does not include editing content." };
+  }
+
+  const [campaign] = await db
+    .select({ id: campaigns.id, name: campaigns.name })
+    .from(campaigns)
+    .where(
+      and(
+        eq(campaigns.id, campaignId),
+        eq(campaigns.workspaceId, context.workspaceId),
+        isNull(campaigns.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!campaign) return { ok: false, error: "That campaign is not available in this workspace." };
+
+  const [item] = await db
+    .select({ id: contentItems.id, campaignId: contentItems.campaignId })
+    .from(contentItems)
+    .where(
+      and(
+        eq(contentItems.id, contentId),
+        eq(contentItems.workspaceId, context.workspaceId),
+        isNull(contentItems.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!item) return { ok: false, error: "That content item is not available in this workspace." };
+  if (item.campaignId && item.campaignId !== campaignId) {
+    return { ok: false, error: "This item already belongs to a different campaign." };
+  }
+
+  await db
+    .update(contentItems)
+    .set({ campaignId, updatedAt: new Date() })
+    .where(eq(contentItems.id, contentId));
+
+  await db.insert(activityEvents).values({
+    organizationId: context.organizationId,
+    workspaceId: context.workspaceId,
+    actorId: context.user.id,
+    kind: "content.added_to_campaign",
+    subjectType: "content_item",
+    subjectId: contentId,
+    summary: `Added to campaign "${campaign.name}"`,
+  });
+
+  revalidatePath(`/app/content/${contentId}`);
+  revalidatePath(`/app/campaigns/${campaign.id}`);
+
+  return { ok: true, campaignName: campaign.name };
 }

@@ -2,19 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, Plus, Settings, UserRound, Zap } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Settings, UserRound, Zap } from "lucide-react";
 import type { MemberRole } from "@/types/database";
 import { cn } from "@/lib/cn";
 import { useLocalFlag } from "@/lib/hooks/useLocalFlag";
 import { can } from "@/lib/permissions";
-import {
-  navItems,
-  createAction,
-  shellCopy,
-  navGroupLabels,
-  type NavItem,
-} from "@/content/app-navigation";
+import { navItems, shellCopy, navGroupLabels, type NavItem } from "@/content/app-navigation";
 import { Wordmark } from "@/components/navigation/Wordmark";
+import { CreateMenu } from "./CreateMenu";
 import { NAV_ICON_SIZE, NAV_ICON_STROKE, navIcons } from "./navIcons";
 
 const COLLAPSE_KEY = "virally:sidebar-collapsed";
@@ -99,24 +94,7 @@ export function Sidebar({
 
       {/* Create action. Compact — a 36px-tall button, not a 56px block. */}
       <div className={cn("pt-[var(--space-3)]", collapsed ? "px-[var(--space-2)]" : "px-[var(--space-3)]")}>
-        <Link
-          href={createAction.href}
-          title={collapsed ? createAction.label : undefined}
-          className={cn(
-            "flex h-9 items-center justify-center gap-[var(--space-2)]",
-            "rounded-[var(--radius-control)]",
-            "bg-[var(--brand-primary)] text-[color:var(--text-on-brand)]",
-            "text-[length:var(--text-app-cell)] font-[var(--weight-strong)]",
-            "shadow-[var(--elevation-card)]",
-            "transition-colors duration-[var(--dur-instant)] ease-[var(--ease-cut)]",
-            "hover:bg-[var(--brand-primary-hover)] active:bg-[var(--brand-primary-active)]",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
-          )}
-        >
-          <Plus aria-hidden="true" size={15} strokeWidth={2.25} />
-          {!collapsed && <span>{createAction.label}</span>}
-          {collapsed && <span className="sr-only">{createAction.label}</span>}
-        </Link>
+        <CreateMenu collapsed={collapsed} />
       </div>
 
       <div
