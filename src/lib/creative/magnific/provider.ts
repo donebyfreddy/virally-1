@@ -212,6 +212,13 @@ export class MagnificProvider implements CreativeGenerationProvider {
   }
 
   async generateAudio(input: AudioGenerationInput): Promise<GenerationTask> {
+    // Magnific catalogues no voiceover/TTS model — only music and sound
+    // effects — so a voiceover request is refused here rather than silently
+    // handed to the sound-effects model, which would produce noise, not
+    // speech, for whatever it was billed.
+    if (input.kind === "voiceover") {
+      throw new ProviderUnsupportedError(this.id, "Magnific has no voiceover model.");
+    }
     const wanted = input.kind === "music" ? "magnific.music-generation" : "magnific.sound-effects";
     const model = findModel(wanted);
     if (!model) throw new ProviderUnsupportedError(this.id, `No Magnific model for ${input.kind}.`);

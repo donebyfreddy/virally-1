@@ -1,5 +1,5 @@
 import type { AspectRatio } from "@/types/database";
-import type { GenerationKind, ProductionMode } from "./types";
+import type { AudioKind, GenerationKind, ProductionMode } from "./types";
 
 /**
  * What a model can be asked to do, and what Virally knows about it.
@@ -74,6 +74,34 @@ const CAPABILITY_KIND: Readonly<Record<GenerationCapability, GenerationKind>> = 
 
 export function kindForCapability(capability: GenerationCapability): GenerationKind {
   return CAPABILITY_KIND[capability];
+}
+
+/**
+ * The three audio capabilities each need a distinct `AudioKind` on the way
+ * into a provider — collapsing "audio" (voiceover) into "sound_effect" is
+ * exactly the bug that made voiceover requests route to a sound-effect model
+ * (or no model at all). Total over the audio-family capabilities so adding a
+ * fourth one is a compile error here, not a silent fallthrough.
+ */
+const AUDIO_KIND_FOR_CAPABILITY: Readonly<Record<"audio" | "music" | "sound-effect", AudioKind>> = {
+  audio: "voiceover",
+  music: "music",
+  "sound-effect": "sound_effect",
+};
+
+export function audioKindForCapability(capability: GenerationCapability): AudioKind {
+  return AUDIO_KIND_FOR_CAPABILITY[capability as "audio" | "music" | "sound-effect"] ?? "voiceover";
+}
+
+const CAPABILITY_FOR_AUDIO_KIND: Readonly<Record<AudioKind, GenerationCapability>> = {
+  voiceover: "audio",
+  music: "music",
+  sound_effect: "sound-effect",
+};
+
+/** The inverse of `audioKindForCapability` — what a provider selects a model by. */
+export function capabilityForAudioKind(kind: AudioKind): GenerationCapability {
+  return CAPABILITY_FOR_AUDIO_KIND[kind];
 }
 
 /** Capabilities that produce a given output kind. For kind-shaped call sites. */

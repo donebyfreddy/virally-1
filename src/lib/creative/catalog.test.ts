@@ -53,13 +53,14 @@ describe("seed fallback", () => {
     expect(providers.has("fal")).toBe(true);
   });
 
-  it("covers every image, video and music capability across the two providers", () => {
+  it("covers every image, video, voiceover and music capability across the two providers", () => {
     const covered = new Set(seedCatalog().flatMap((each) => each.capabilities));
     const expected = [
       "text-to-image",
       "image-to-image",
       "text-to-video",
       "image-to-video",
+      "audio",
       "music",
       "sound-effect",
     ] as const;
@@ -68,14 +69,12 @@ describe("seed fallback", () => {
     }
   });
 
-  it("has no real provider for audio, lip-sync or upscale — these fall through to the mock", () => {
-    // MuAPI was the only provider that catalogued these three, and it has been
+  it("has no real provider for lip-sync or upscale — these fall through to the mock", () => {
+    // MuAPI was the only provider that catalogued these, and it has been
     // removed from the active generation flow. A request for one of them is
     // routed to the deterministic mock and labelled as demo until a fal or
-    // Magnific model is catalogued for it — see `describe("supports()")` in
-    // fal/fal.test.ts, which asserts the same gap from the provider side.
+    // Magnific model is catalogued for it.
     const covered = new Set(seedCatalog().flatMap((each) => each.capabilities));
-    expect(covered.has("audio")).toBe(false);
     expect(covered.has("lip-sync")).toBe(false);
     expect(covered.has("upscale")).toBe(false);
   });

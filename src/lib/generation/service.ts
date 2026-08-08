@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { activityEvents, auditLogs, providerRuns } from "@/lib/db/schema";
 import {
+  audioKindForCapability,
   kindForCapability,
   type GenerationCapability,
   type GenerationModel,
@@ -351,7 +352,7 @@ function buildProviderInput(
 
   return {
     ...base,
-    kind: request.capability === "music" ? "music" : "sound_effect",
+    kind: audioKindForCapability(request.capability),
     durationSeconds: request.durationSeconds ?? 10,
   } satisfies AudioGenerationInput;
 }

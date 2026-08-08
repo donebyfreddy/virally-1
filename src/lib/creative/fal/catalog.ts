@@ -12,8 +12,9 @@ import type { GenerationQuality, ProductionMode } from "../types";
  * `fal-ai/kling-video/v1.6/standard/text-to-video`), so only endpoints that were
  * individually confirmed are catalogued.
  *
- * Deliberately small: four models, one per core capability. fal hosts
- * thousands; cataloguing more without a per-model schema check would be a
+ * Deliberately small: one model per core capability (image, image edit,
+ * text-to-video, image-to-video, voiceover, music). fal hosts thousands;
+ * cataloguing more without a per-model schema check would be a
  * plausible-looking submission that 404s or 422s the first time it runs.
  */
 
@@ -81,8 +82,12 @@ const RATIO_PARTS: Readonly<Partial<Record<AspectRatio, readonly [number, number
 export type FalModelMetadata = {
   /** Payload key that receives the single reference image, when the model takes one. */
   imageField?: string;
-  /** Shape of the model's completed result: `images[]` or a single `video`. */
-  outputField?: "images" | "video";
+  /** Shape of the model's completed result: `images[]`, a single `video`, or a single audio file. */
+  outputField?: "images" | "video" | "audio";
+  /** Result key holding the audio file, when `outputField` is `"audio"` — varies per model (Kokoro's `audio`, Stable Audio's `audio_file`). */
+  audioField?: string;
+  /** Payload key that receives the requested clip length in seconds, for models that take one (Stable Audio's `seconds_total`). */
+  durationField?: string;
   family?: string;
 };
 
@@ -90,13 +95,20 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+const OUTPUT_FIELDS = new Set(["images", "video", "audio"]);
+
 export function falMetadata(model: GenerationModel): FalModelMetadata {
   const raw = model.metadata;
   if (raw === undefined) return {};
   const outputField = raw.outputField;
   return {
     imageField: readString(raw.imageField),
-    outputField: outputField === "images" || outputField === "video" ? outputField : undefined,
+    outputField:
+      typeof outputField === "string" && OUTPUT_FIELDS.has(outputField)
+        ? (outputField as FalModelMetadata["outputField"])
+        : undefined,
+    audioField: readString(raw.audioField),
+    durationField: readString(raw.durationField),
     family: readString(raw.family),
   };
 }
@@ -194,6 +206,57 @@ export const FAL_MODELS: readonly GenerationModel[] = [
     estimatedCentsPerUnit: 130,
     enabled: true,
     metadata: { family: "kling", imageField: "image_url", outputField: "video" },
+  },
+  {
+    id: "fal.kokoro-tts",
+    providerId: "fal",
+    externalModelId: "fal-ai/kokoro/american-english",
+    name: "Kokoro TTS",
+    description: "Open-weights text-to-speech — the default for storyboard voiceovers.",
+    capabilities: ["audio"],
+    inputTypes: ["text"],
+    supportedAspectRatios: [],
+    // Driven by the length of the script text, not a requested clip length —
+    // Kokoro's own API takes no duration parameter at all.
+    supportedDurations: [],
+    supportedResolutions: [],
+    supportsNegativePrompt: false,
+    supportsSeed: false,
+    supportsAudio: false,
+    modes: ["fast", "hybrid", "cinematic"],
+    // fal bills Kokoro at $0.02 per 1,000 characters — a typical 20-30s
+    // voiceover script runs a few hundred characters, so this is a flat
+    // per-run estimate rather than a per-character one, matching how every
+    // other model here is priced (see the module doc comment).
+    estimatedCentsPerUnit: 3,
+    enabled: true,
+    metadata: { family: "kokoro", outputField: "audio", audioField: "audio" },
+  },
+  {
+    id: "fal.stable-audio",
+    providerId: "fal",
+    externalModelId: "fal-ai/stable-audio",
+    name: "Stable Audio Open",
+    description: "Instrumental background music generated from a text prompt.",
+    capabilities: ["music"],
+    inputTypes: ["text"],
+    supportedAspectRatios: [],
+    // fal documents no upper bound on `seconds_total`; an out-of-range request
+    // is a 422 from fal itself rather than a limit guessed here.
+    supportedDurations: [],
+    supportedResolutions: [],
+    supportsNegativePrompt: false,
+    supportsSeed: false,
+    supportsAudio: false,
+    modes: ["fast", "hybrid", "cinematic"],
+    estimatedCentsPerUnit: 10,
+    enabled: true,
+    metadata: {
+      family: "stable-audio",
+      outputField: "audio",
+      audioField: "audio_file",
+      durationField: "seconds_total",
+    },
   },
 ] as const;
 

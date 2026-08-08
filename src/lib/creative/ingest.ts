@@ -3,7 +3,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { mediaAssets, providerRunOutputs, providerRuns } from "@/lib/db/schema";
 import { getStorageAdapter } from "@/lib/storage";
-import type { AssetKind } from "@/types/database";
+import { assetKindFor, extensionFor } from "./assetKind";
 import type { TenantScope } from "./scope";
 import { assertScope } from "./scope";
 import type { GenerationKind } from "./types";
@@ -74,6 +74,7 @@ export async function ingestRunOutputs(
     .select({
       id: providerRuns.id,
       generationType: providerRuns.generationType,
+      capability: providerRuns.capability,
       providerId: providerRuns.providerId,
       model: providerRuns.model,
       estimatedInternalCents: providerRuns.estimatedInternalCents,
@@ -117,6 +118,7 @@ export async function ingestRunOutputs(
         declaredMimeType: output.mimeType,
         position: output.position,
         generationType: found.generationType,
+        capability: found.capability,
         providerId: found.providerId,
         model: found.model,
         costCents: found.estimatedInternalCents,
@@ -133,6 +135,7 @@ async function ingestOne(input: {
   declaredMimeType: string | null;
   position: number;
   generationType: GenerationKind;
+  capability: string | null;
   providerId: string;
   model: string;
   costCents: number;
@@ -175,7 +178,7 @@ async function ingestOne(input: {
       .values({
         organizationId: input.scope.organizationId,
         workspaceId: input.scope.workspaceId,
-        kind: assetKindFor(input.generationType),
+        kind: assetKindFor(input.generationType, input.capability),
         bucket: "generated-media",
         storagePath: key,
         mimeType,
@@ -295,36 +298,4 @@ async function readCapped(response: Response): Promise<Buffer> {
     chunks.push(value);
   }
   return Buffer.concat(chunks);
-}
-
-/** Maps a generation kind onto the schema's `asset_kind` enum. */
-export function assetKindFor(kind: GenerationKind): AssetKind {
-  if (kind === "image") return "generated_image";
-  if (kind === "video") return "generated_video";
-  return "audio";
-}
-
-/**
- * File extension for a stored object.
- *
- * Derived from the MIME type the server actually sent, falling back to the
- * generation kind. Never taken from the source URL — a provider URL's path can
- * be arbitrary and an attacker-influenced extension on a stored object is how a
- * storage bucket starts serving executable content.
- */
-export function extensionFor(mimeType: string, kind: GenerationKind): string {
-  const known: Readonly<Record<string, string>> = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-    "video/mp4": ".mp4",
-    "video/webm": ".webm",
-    "audio/mpeg": ".mp3",
-    "audio/wav": ".wav",
-    "audio/mp4": ".m4a",
-  };
-  if (known[mimeType]) return known[mimeType];
-  if (kind === "image") return ".png";
-  if (kind === "video") return ".mp4";
-  return ".mp3";
 }

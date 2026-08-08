@@ -1,4 +1,5 @@
 import {
+  capabilityForAudioKind,
   checkModelFit,
   isRoutable,
   quantiseDuration,
@@ -23,7 +24,14 @@ import {
   type SupportsQuery,
   type VideoGenerationInput,
 } from "../types";
-import { FAL_MODELS, falImageSize, falMetadata, selectFalModel, toFalAspectRatio } from "./catalog";
+import {
+  FAL_MODELS,
+  falImageSize,
+  falMetadata,
+  selectFalModel,
+  toFalAspectRatio,
+  type FalModelMetadata,
+} from "./catalog";
 import { FalClient } from "./client";
 
 /**
@@ -155,9 +163,7 @@ export class FalProvider implements CreativeGenerationProvider {
   }
 
   async estimateAudio(input: AudioGenerationInput): Promise<CostEstimate> {
-    const capability = input.kind === "music" ? "music" : "sound-effect";
-    // No fal model is catalogued for audio today; this throws via
-    // `requireModel`, and the router falls through to Magnific or the mock.
+    const capability = capabilityForAudioKind(input.kind);
     const model = this.requireModel(capability, input.mode, input.quality);
     return estimateFor(model, 1);
   }
@@ -230,9 +236,16 @@ export class FalProvider implements CreativeGenerationProvider {
   }
 
   async generateAudio(input: AudioGenerationInput): Promise<GenerationTask> {
-    const capability = input.kind === "music" ? "music" : "sound-effect";
+    const capability = capabilityForAudioKind(input.kind);
     const model = this.requireModel(capability, input.mode, input.quality);
-    return this.submit(model, { prompt: input.prompt });
+    const metadata = falMetadata(model);
+
+    const payload: Record<string, unknown> = { prompt: input.prompt };
+    if (metadata.durationField) {
+      payload[metadata.durationField] = Math.max(1, Math.round(input.durationSeconds));
+    }
+
+    return this.submit(model, payload);
   }
 
   async getTaskStatus(taskId: string, _kind: GenerationKind): Promise<GenerationTaskStatus> {
@@ -255,9 +268,9 @@ export class FalProvider implements CreativeGenerationProvider {
     }
 
     const model = this.catalog.find((each) => each.externalModelId === endpointId) ?? null;
-    const outputField = model ? falMetadata(model).outputField : undefined;
+    const metadata = model ? falMetadata(model) : {};
     const result = await this.client.result(endpointId, requestId);
-    const media = extractMedia(result, outputField);
+    const media = extractMedia(result, metadata);
 
     if (media.length === 0) {
       return failedStatus(requestId, "fal.ai reported the task complete but returned no output.");
@@ -377,30 +390,20 @@ function failedStatus(requestId: string, message: string): GenerationTaskStatus 
  *
  * `outputField` comes from the catalogue entry that matched the endpoint id,
  * never guessed from the response shape — fal's image models return
- * `images: [{url}]` and its video models return a single `video: {url}`, and
- * there is no field that reliably tells the two apart on its own.
+ * `images: [{url}]`, its video models return a single `video: {url}`, and its
+ * audio models return a single object under a model-specific key (Kokoro's
+ * `audio`, Stable Audio's `audio_file`) — `metadata.audioField` names which,
+ * and there is no field that reliably tells any of these apart on its own.
  */
 function extractMedia(
   result: unknown,
-  outputField: "images" | "video" | undefined,
+  metadata: FalModelMetadata,
 ): GenerationTaskStatus["media"] {
   if (!isRecord(result)) return [];
+  const outputField = metadata.outputField;
 
-  if (outputField === "video") {
-    const video = result.video;
-    if (isRecord(video) && typeof video.url === "string" && video.url !== "") {
-      return [
-        {
-          url: video.url,
-          mimeType: typeof video.content_type === "string" ? video.content_type : null,
-          widthPx: null,
-          heightPx: null,
-          durationMs: null,
-        },
-      ];
-    }
-    return [];
-  }
+  if (outputField === "video") return extractSingleFile(result.video);
+  if (outputField === "audio") return extractSingleFile(result[metadata.audioField ?? "audio"]);
 
   if (outputField === "images" || outputField === undefined) {
     const images = result.images;
@@ -417,6 +420,22 @@ function extractMedia(
       }));
   }
 
+  return [];
+}
+
+/** Shared shape of a fal video or audio result: one file under one key. */
+function extractSingleFile(file: unknown): GenerationTaskStatus["media"] {
+  if (isRecord(file) && typeof file.url === "string" && file.url !== "") {
+    return [
+      {
+        url: file.url,
+        mimeType: typeof file.content_type === "string" ? file.content_type : null,
+        widthPx: null,
+        heightPx: null,
+        durationMs: null,
+      },
+    ];
+  }
   return [];
 }
 

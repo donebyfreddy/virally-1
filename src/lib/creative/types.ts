@@ -229,7 +229,7 @@ export type VideoGenerationInput = GenerationInputBase & {
   generateAudio?: boolean;
 };
 
-export type AudioKind = "music" | "sound_effect";
+export type AudioKind = "voiceover" | "music" | "sound_effect";
 
 export type AudioGenerationInput = GenerationInputBase & {
   kind: AudioKind;

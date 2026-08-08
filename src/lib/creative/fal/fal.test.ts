@@ -197,6 +197,41 @@ describe("fal request building", () => {
     expect(typeof firstSeed).toBe("number");
     expect(firstSeed).toBe(secondSeed);
   });
+
+  it("routes a voiceover request to Kokoro, not the sound-effects gap", async () => {
+    const sink: { url?: string; init?: RequestInit } = {};
+    const client = new FalClient({ transport: stubTransport(IN_QUEUE, sink) });
+    await new FalProvider({ client }).generateAudio({
+      idempotencyKey: "key-1",
+      prompt: "Hidden beaches nobody talks about.",
+      mode: "fast",
+      quality: "standard",
+      kind: "voiceover",
+      durationSeconds: 20,
+    });
+
+    expect(sink.url).toBe("https://queue.fal.run/fal-ai/kokoro/american-english");
+    const body = JSON.parse(String(sink.init?.body));
+    expect(body.prompt).toBe("Hidden beaches nobody talks about.");
+    // Kokoro has no duration input — driven by the text, not a clip length.
+    expect(body.seconds_total).toBeUndefined();
+  });
+
+  it("sends Stable Audio's seconds_total for a music request", async () => {
+    const sink: { init?: RequestInit } = {};
+    const client = new FalClient({ transport: stubTransport(IN_QUEUE, sink) });
+    await new FalProvider({ client }).generateAudio({
+      idempotencyKey: "key-1",
+      prompt: "Upbeat instrumental background music.",
+      mode: "fast",
+      quality: "standard",
+      kind: "music",
+      durationSeconds: 24.4,
+    });
+
+    const body = JSON.parse(String(sink.init?.body));
+    expect(body.seconds_total).toBe(24);
+  });
 });
 
 // =============================================================================
@@ -245,15 +280,15 @@ describe("supports()", () => {
     ).rejects.toBeInstanceOf(ProviderUnsupportedError);
   });
 
-  it("has no audio model, so an audio request is refused rather than silently mismatched", async () => {
+  it("has no sound-effect model, so that request is refused rather than silently mismatched", async () => {
     await expect(
       new FalProvider().generateAudio({
         idempotencyKey: "key-1",
-        prompt: "a jingle",
+        prompt: "a door slam",
         mode: "fast",
         quality: "standard",
-        kind: "music",
-        durationSeconds: 10,
+        kind: "sound_effect",
+        durationSeconds: 3,
       }),
     ).rejects.toBeInstanceOf(ProviderUnsupportedError);
   });
@@ -326,6 +361,39 @@ describe("response mapping", () => {
     );
     expect(status.media).toEqual([
       { url: "https://cdn.fal.ai/out.mp4", mimeType: null, widthPx: null, heightPx: null, durationMs: null },
+    ]);
+  });
+
+  it("extracts a voiceover URL from Kokoro's `audio` field", async () => {
+    let call = 0;
+    const client = new FalClient({
+      transport: async () => {
+        call += 1;
+        if (call === 1) return { status: 200, body: { status: "COMPLETED" } };
+        return { status: 200, body: { audio: { url: "https://cdn.fal.ai/voice.wav" } } };
+      },
+    });
+    const status = await new FalProvider({ client }).getTaskStatus(
+      "fal-ai/kokoro/american-english::req-1",
+      "audio",
+    );
+    expect(status.media).toEqual([
+      { url: "https://cdn.fal.ai/voice.wav", mimeType: null, widthPx: null, heightPx: null, durationMs: null },
+    ]);
+  });
+
+  it("extracts a music URL from Stable Audio's `audio_file` field, a different key than Kokoro's", async () => {
+    let call = 0;
+    const client = new FalClient({
+      transport: async () => {
+        call += 1;
+        if (call === 1) return { status: 200, body: { status: "COMPLETED" } };
+        return { status: 200, body: { audio_file: { url: "https://cdn.fal.ai/music.wav" } } };
+      },
+    });
+    const status = await new FalProvider({ client }).getTaskStatus("fal-ai/stable-audio::req-1", "audio");
+    expect(status.media).toEqual([
+      { url: "https://cdn.fal.ai/music.wav", mimeType: null, widthPx: null, heightPx: null, durationMs: null },
     ]);
   });
 
