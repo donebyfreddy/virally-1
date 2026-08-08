@@ -457,6 +457,10 @@ export async function generateQuickContent(
       ratio,
       durationSeconds: shot.durationMs ? Math.max(1, Math.round(shot.durationMs / 1000)) : undefined,
       contentItemId: contentId,
+      // Without this, a completed generation has no way back to which shot it
+      // fills — `attachCompletedAssets` only calls `attachAssetToShot` when a
+      // `shotId` rode along on the job payload (see jobs/generation.ts).
+      shotId: shot.id,
       campaignId: null,
       createdBy: context.user.id,
       allowMockFallback: false,

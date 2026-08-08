@@ -303,6 +303,42 @@ describe("response mapping", () => {
     process.env[KEY_VAR] = "test-key";
   });
 
+  it("polls the queue base (owner/app), not the full submit endpoint — fal drops everything after", async () => {
+    // Regression test: a real submit to fal-ai/flux/dev returns a status_url
+    // under fal-ai/flux (no /dev), and the client silently 405ed against the
+    // full endpoint id here until this was caught — undetected because
+    // submission (a different URL, correctly the full id) always succeeded.
+    const sink: { url?: string } = {};
+    const client = new FalClient({ transport: stubTransport(IN_QUEUE, sink) });
+    await new FalProvider({ client }).getTaskStatus("fal-ai/flux/dev::req-1", "image");
+    expect(sink.url).toBe("https://queue.fal.run/fal-ai/flux/requests/req-1/status");
+  });
+
+  it("leaves a two-segment endpoint's queue base unchanged — nothing to drop", async () => {
+    const sink: { url?: string } = {};
+    const client = new FalClient({ transport: stubTransport(IN_QUEUE, sink) });
+    await new FalProvider({ client }).getTaskStatus("fal-ai/stable-audio::req-1", "audio");
+    expect(sink.url).toBe("https://queue.fal.run/fal-ai/stable-audio/requests/req-1/status");
+  });
+
+  it("fetches the result from the same truncated queue base once completed", async () => {
+    let call = 0;
+    const sink: { url?: string } = {};
+    const client = new FalClient({
+      transport: async (url) => {
+        call += 1;
+        sink.url = url;
+        if (call === 1) return { status: 200, body: { status: "COMPLETED" } };
+        return { status: 200, body: { images: [{ url: "https://cdn.fal.ai/out.png" }] } };
+      },
+    });
+    await new FalProvider({ client }).getTaskStatus(
+      "fal-ai/kling-video/v1.6/standard/text-to-video::req-1",
+      "video",
+    );
+    expect(sink.url).toBe("https://queue.fal.run/fal-ai/kling-video/requests/req-1");
+  });
+
   it("maps IN_QUEUE and IN_PROGRESS, never faking a percentage", async () => {
     const queued = new FalClient({
       transport: stubTransport({ status: 200, body: { status: "IN_QUEUE", queue_position: 3 } }),

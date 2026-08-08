@@ -10,14 +10,18 @@ import { FAL_AUTH_HEADER, FAL_BASE_URL } from "./catalog";
  * same rule that no credential and no raw provider body ever reaches a log
  * line or an `Error` message.
  *
- * fal's queue API (verified against https://docs.fal.ai/model-apis/queue and
- * https://fal.ai/models/{id}/api at integration time) differs from both prior
- * adapters in one structural way: the endpoint id is part of every URL, not
- * just the submit URL. A poll or a result fetch needs
- * `{endpointId}/requests/{requestId}`, not just the request id — which is why
- * `FalProvider` encodes the endpoint id into the task id it returns rather than
- * re-deriving a model from the run's kind at poll time the way the Magnific
- * adapter does.
+ * fal's queue API differs from both prior adapters in one structural way: the
+ * endpoint id is part of every URL, not just the submit URL. A poll or a
+ * result fetch needs `{queueBase}/requests/{requestId}`, not just the request
+ * id — which is why `FalProvider` encodes the endpoint id into the task id it
+ * returns rather than re-deriving a model from the run's kind at poll time the
+ * way the Magnific adapter does.
+ *
+ * `{queueBase}` is NOT the full submit endpoint — see `queueBase` below. Using
+ * the full endpoint id here fails silently until a real poll happens: submit
+ * always succeeds regardless (it uses the full id correctly), so the mistake
+ * only surfaces the first time something actually drains the queue against a
+ * live provider.
  */
 
 export type FalQueueState = "IN_QUEUE" | "IN_PROGRESS" | "COMPLETED";
@@ -75,6 +79,23 @@ export type FalClientOptions = {
   pollTimeoutMs?: number;
 };
 
+/**
+ * The queue namespace a submit endpoint's status/result/cancel calls live
+ * under — the model owner and app name, dropping everything after.
+ *
+ * Confirmed directly against the live API rather than assumed: a real submit
+ * to `fal-ai/flux/dev` returns `status_url: ".../fal-ai/flux/requests/{id}/status"`
+ * — `/dev` dropped — and a submit to `fal-ai/kokoro/american-english` returns
+ * `".../fal-ai/kokoro/requests/{id}/status"` — `/american-english` dropped.
+ * `fal-ai/stable-audio` (already two segments) round-trips unchanged, which is
+ * also why a two-segment model's status calls happened to work despite this
+ * function's absence — the queue base and the submit endpoint are identical
+ * exactly when there is no third segment to drop.
+ */
+function queueBase(endpointId: string): string {
+  return endpointId.split("/").slice(0, 2).join("/");
+}
+
 export class FalClient {
   private readonly transport: FalTransport;
   private readonly baseUrl: string;
@@ -108,7 +129,7 @@ export class FalClient {
 
   async status(endpointId: string, requestId: string): Promise<FalStatus> {
     const body = await this.call(
-      `/${endpointId}/requests/${encodeURIComponent(requestId)}/status`,
+      `/${queueBase(endpointId)}/requests/${encodeURIComponent(requestId)}/status`,
       { method: "GET" },
       this.pollTimeoutMs,
     );
@@ -118,7 +139,7 @@ export class FalClient {
   /** The model's own output shape once `status` reports `COMPLETED`. */
   async result(endpointId: string, requestId: string): Promise<unknown> {
     return this.call(
-      `/${endpointId}/requests/${encodeURIComponent(requestId)}`,
+      `/${queueBase(endpointId)}/requests/${encodeURIComponent(requestId)}`,
       { method: "GET" },
       this.pollTimeoutMs,
     );
@@ -126,7 +147,7 @@ export class FalClient {
 
   async cancel(endpointId: string, requestId: string): Promise<void> {
     await this.call(
-      `/${endpointId}/requests/${encodeURIComponent(requestId)}/cancel`,
+      `/${queueBase(endpointId)}/requests/${encodeURIComponent(requestId)}/cancel`,
       { method: "PUT" },
       this.pollTimeoutMs,
     );

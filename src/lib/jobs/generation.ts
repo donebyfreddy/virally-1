@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobs, providerRunOutputs } from "@/lib/db/schema";
+import { isContentReadyToRender } from "@/lib/creative/contentRender";
 import { pollRun, submitGeneration, type SubmitInput } from "@/lib/creative/pipeline";
 import { tenantScope } from "@/lib/creative/scope";
 import { attachAssetToCampaign, attachAssetToShot } from "@/lib/generation/attach";
@@ -9,6 +10,7 @@ import { MAX_JOB_AGE_MS, pollDelayMs } from "./backoff";
 import {
   awaitExternal,
   completeJob,
+  enqueueJob,
   failJob,
   reportProgress,
   type ClaimedJob,
@@ -270,9 +272,39 @@ async function attachCompletedAssets(
     if (payload.shotId && firstAssetId) {
       await attachAssetToShot(scope, payload.shotId, firstAssetId);
     }
+
+    if (payload.contentItemId) {
+      await enqueueRenderIfReady(scope, payload.contentItemId);
+    }
   } catch (error) {
     console.error(`[jobs/generation] Could not attach the completed asset for run ${runId}.`, error);
   }
+}
+
+/**
+ * Enqueues the render once every asset a content item's plan called for has
+ * arrived — checked, not assumed, because this runs after EVERY completed
+ * generation and most of those completions still leave something outstanding.
+ *
+ * The idempotency key has no revision in it: today a content item is rendered
+ * once, the first time it becomes ready. Regenerating a shot later and wanting
+ * a fresh render is a real case this does not yet cover — see the "Regenerate"
+ * action called for in the product brief, which is unbuilt.
+ */
+async function enqueueRenderIfReady(
+  scope: ReturnType<typeof tenantScope>,
+  contentItemId: string,
+): Promise<void> {
+  const ready = await isContentReadyToRender(scope, contentItemId);
+  if (!ready) return;
+
+  await enqueueJob({
+    organizationId: scope.organizationId,
+    workspaceId: scope.workspaceId,
+    type: "content.render",
+    payload: { contentItemId },
+    idempotencyKey: `content.render:${contentItemId}`,
+  });
 }
 
 /**

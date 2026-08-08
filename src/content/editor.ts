@@ -66,7 +66,7 @@ export const editorCopy = {
   previewNotRendered:
     "This variant has not been rendered yet. A preview appears once the render job completes — nothing is shown here in the meantime, because a placeholder frame would imply the video exists.",
   previewPending:
-    "A render exists for this variant but the preview player is not wired up on this surface yet.",
+    "A render exists for this variant, but its preview link could not be loaded just now. Reload the page to try again.",
 
   noAssets:
     "No assets are attached to this item yet. Generated stills, clips and voiceovers appear here as the campaign produces them.",

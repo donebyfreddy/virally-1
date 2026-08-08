@@ -1,3 +1,5 @@
+import { abandonRun } from "@/lib/creative/pipeline";
+import { tenantScope } from "@/lib/creative/scope";
 import { GENERATION_JOB_TYPES, handleGenerationJob } from "./generation";
 import {
   claimJobs,
@@ -6,6 +8,10 @@ import {
   type ClaimedJob,
   type JobType,
 } from "./queue";
+import { handleRenderJob } from "./render";
+
+/** Every job type this runner knows how to process, across both handlers. */
+const ALL_RUNNABLE_JOB_TYPES: readonly JobType[] = [...GENERATION_JOB_TYPES, "content.render"];
 
 /**
  * The drain loop.
@@ -59,7 +65,7 @@ export async function runQueueOnce(options: RunnerOptions = {}): Promise<RunnerR
   const budgetMs = options.budgetMs ?? 50_000;
   const batchSize = options.batchSize ?? 5;
   const maxJobs = options.maxJobs ?? 50;
-  const types = options.types ?? GENERATION_JOB_TYPES;
+  const types = options.types ?? ALL_RUNNABLE_JOB_TYPES;
 
   const startedAt = Date.now();
   const report: RunnerReport = {
@@ -121,6 +127,11 @@ type OutcomeKey = "completed" | "polling" | "failed" | "abandoned" | "errored";
  */
 async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
   try {
+    if (job.type === "content.render") {
+      const result = await handleRenderJob(job);
+      return result.outcome === "completed" ? "completed" : "failed";
+    }
+
     const result = await handleGenerationJob(job);
     switch (result.outcome) {
       case "completed":
@@ -137,7 +148,7 @@ async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
     const message =
       error instanceof Error ? error.message : "The job handler threw a non-Error value.";
     try {
-      await failJob(
+      const outcome = await failJob(
         job.id,
         // Retryable: an unexpected throw is far more often a transient
         // condition — a dropped connection, a provider blip — than a permanent
@@ -145,6 +156,18 @@ async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
         { code: "handler_error", message, retryable: true },
         { attempts: job.attempts, maxAttempts: job.maxAttempts },
       );
+      // A dead-lettered job will never be polled again, so its run — if it has
+      // one — must be closed out here or it sits non-terminal forever, quietly
+      // consuming a concurrency slot for every generation after it. See
+      // `abandonRun`'s doc comment for how that silently starves a workspace.
+      const providerRunId = job.payload.providerRunId;
+      if (outcome === "dead_letter" && typeof providerRunId === "string") {
+        await abandonRun(
+          tenantScope(job.organizationId, job.workspaceId),
+          providerRunId,
+          `The job polling this run gave up after ${job.attempts} attempts: ${message}`,
+        );
+      }
     } catch (failureError) {
       // The database is unreachable, so the job cannot be marked failed. Its
       // lease will expire and another invocation will reclaim it. Logged

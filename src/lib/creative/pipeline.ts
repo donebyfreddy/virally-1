@@ -427,6 +427,26 @@ async function failRun(scope: TenantScope, runId: string, error: unknown): Promi
   await markFailed(scope, runId, "submit_failed", message);
 }
 
+/**
+ * Marks a run failed because the job polling it gave up, not because the
+ * provider reported a failure.
+ *
+ * Without this, a job that dead-letters (retries exhausted) leaves its run in
+ * whatever non-terminal state it was last in — `submitted`, `generating`,
+ * whatever — forever, because dead-lettering is terminal for the JOB and
+ * nothing ever polls that run again. `checkConcurrency` counts non-terminal
+ * runs, so an orphaned one keeps counting against the workspace's concurrency
+ * limit indefinitely, silently refusing every future generation on that
+ * provider once enough jobs have dead-lettered. Settling here releases
+ * whatever credits it held, for the same reason `pollRun`'s own failure branch
+ * does — a run that never resolves must not hold a reservation forever either.
+ */
+export async function abandonRun(scope: TenantScope, runId: string, reason: string): Promise<void> {
+  assertScope(scope);
+  await markFailed(scope, runId, "job_abandoned", reason);
+  await settleFor(scope, runId);
+}
+
 async function markFailed(
   scope: TenantScope,
   runId: string,

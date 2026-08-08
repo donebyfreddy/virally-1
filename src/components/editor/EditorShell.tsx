@@ -83,6 +83,8 @@ export type EditorVariant = {
   status: ReviewStatus;
   captionOverride: string | null;
   renderedAssetId: string | null;
+  /** Short-lived signed URL for `renderedAssetId`, resolved server-side. Null until one exists. */
+  renderedAssetUrl: string | null;
   thumbnailAssetId: string | null;
 };
 
@@ -151,6 +153,8 @@ export function EditorShell({
     if (item.durationMs) return item.durationMs;
     return segments.reduce((max, segment) => Math.max(max, segment.endMs ?? 0), 0);
   }, [item.durationMs, segments]);
+
+  const captionsUrl = useMemo(() => captionsTrackUrl(segments), [segments]);
 
   const assetsByKind = useMemo(() => {
     const groups = new Map<string, EditorAsset[]>();
@@ -329,64 +333,85 @@ export function EditorShell({
                 maxWidth: `calc(${PREVIEW_MAX_HEIGHT} * ${ratioFraction(previewRatio)})`,
               }}
             >
-              {/* No fake frame. Until a render exists there is nothing to show,
-                  and a placeholder poster would imply the video is ready. */}
-              <div className="flex max-w-[26rem] flex-col items-center gap-[var(--space-3)] p-[var(--space-6)] text-center">
-                <Clapperboard
-                  aria-hidden="true"
-                  size={22}
-                  strokeWidth={1.5}
-                  // A mark token on a decorative glyph: 4.35:1 on the fill, which
-                  // clears the graphical-object floor and carries no text.
-                  className="text-[color:var(--brand-mark)]"
-                />
-                <p className="text-[length:var(--text-app-meta)] text-[color:var(--text-on-brand)]">
-                  {activeVariant?.renderedAssetId
-                    ? editorCopy.previewPending
-                    : editorCopy.previewNotRendered}
-                </p>
-              </div>
+              {activeVariant?.renderedAssetUrl ? (
+                // A real, playable file — native controls (play, pause, seek,
+                // fullscreen, volume) rather than a hand-built transport that
+                // would only re-implement what the browser already does
+                // correctly for an arbitrary MP4.
+                <video
+                  key={activeVariant.id}
+                  src={activeVariant.renderedAssetUrl}
+                  controls
+                  className="h-full w-full object-contain"
+                >
+                  {captionsUrl && (
+                    <track kind="captions" src={captionsUrl} srcLang="en" label="Script" default />
+                  )}
+                </video>
+              ) : (
+                // No fake frame. Until a render exists there is nothing to show,
+                // and a placeholder poster would imply the video is ready.
+                <div className="flex max-w-[26rem] flex-col items-center gap-[var(--space-3)] p-[var(--space-6)] text-center">
+                  <Clapperboard
+                    aria-hidden="true"
+                    size={22}
+                    strokeWidth={1.5}
+                    // A mark token on a decorative glyph: 4.35:1 on the fill, which
+                    // clears the graphical-object floor and carries no text.
+                    className="text-[color:var(--brand-mark)]"
+                  />
+                  <p className="text-[length:var(--text-app-meta)] text-[color:var(--text-on-brand)]">
+                    {activeVariant?.renderedAssetId
+                      ? editorCopy.previewPending
+                      : editorCopy.previewNotRendered}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Transport. Disabled until there is media to play — a play button
-                that does nothing is the clearest possible lie on this surface. */}
-            <div className="mt-[var(--space-3)] flex flex-wrap items-center gap-[var(--space-3)]">
-              {/*
-                `gap-2` is load-bearing. Each 36px icon button carries a transparent
-                44px hit target, which overhangs 4px per side; an 8px gap makes two
-                neighbouring targets meet exactly instead of overlapping, so no
-                button steals its neighbour's clicks.
-              */}
-              <div className="flex items-center gap-[var(--space-2)]">
-                <TransportButton label={editorCopy.playLabel} disabled>
-                  <Play aria-hidden="true" size={15} strokeWidth={1.75} />
-                </TransportButton>
-                <TransportButton label={editorCopy.pauseLabel} disabled>
-                  <Pause aria-hidden="true" size={15} strokeWidth={1.75} />
-                </TransportButton>
-                <TransportButton label={editorCopy.fullscreenLabel} disabled>
-                  <Maximize2 aria-hidden="true" size={15} strokeWidth={1.75} />
-                </TransportButton>
+                that does nothing is the clearest possible lie on this surface.
+                Once a render exists, the <video> element above owns transport
+                (native controls), so this row only states dimensions. */}
+            {!activeVariant?.renderedAssetUrl && (
+              <div className="mt-[var(--space-3)] flex flex-wrap items-center gap-[var(--space-3)]">
+                {/*
+                  `gap-2` is load-bearing. Each 36px icon button carries a transparent
+                  44px hit target, which overhangs 4px per side; an 8px gap makes two
+                  neighbouring targets meet exactly instead of overlapping, so no
+                  button steals its neighbour's clicks.
+                */}
+                <div className="flex items-center gap-[var(--space-2)]">
+                  <TransportButton label={editorCopy.playLabel} disabled>
+                    <Play aria-hidden="true" size={15} strokeWidth={1.75} />
+                  </TransportButton>
+                  <TransportButton label={editorCopy.pauseLabel} disabled>
+                    <Pause aria-hidden="true" size={15} strokeWidth={1.75} />
+                  </TransportButton>
+                  <TransportButton label={editorCopy.fullscreenLabel} disabled>
+                    <Maximize2 aria-hidden="true" size={15} strokeWidth={1.75} />
+                  </TransportButton>
+                </div>
+
+                <span className="app-figure text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]">
+                  {formatTimecode(0)} / {formatTimecode(durationMs / 1000)}
+                </span>
+
+                {/* Compared against null rather than truthiness: a 0 would render as
+                    the literal string "0" beside the timecode. */}
+                {activeVariant !== null &&
+                  activeVariant.width !== null &&
+                  activeVariant.height !== null && (
+                    <span className="app-figure text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                      {activeVariant.width}×{activeVariant.height}
+                    </span>
+                  )}
+
+                <span className="ml-auto text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
+                  {editorCopy.transportUnavailable}
+                </span>
               </div>
-
-              <span className="app-figure text-[length:var(--text-app-meta)] text-[color:var(--text-secondary)]">
-                {formatTimecode(0)} / {formatTimecode(durationMs / 1000)}
-              </span>
-
-              {/* Compared against null rather than truthiness: a 0 would render as
-                  the literal string "0" beside the timecode. */}
-              {activeVariant !== null &&
-                activeVariant.width !== null &&
-                activeVariant.height !== null && (
-                  <span className="app-figure text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
-                    {activeVariant.width}×{activeVariant.height}
-                  </span>
-                )}
-
-              <span className="ml-auto text-[length:var(--text-app-label)] text-[color:var(--text-muted)]">
-                {editorCopy.transportUnavailable}
-              </span>
-            </div>
+            )}
           </CardBody>
         </Card>
 
@@ -1004,4 +1029,37 @@ function ratioFraction(ratio: string): number {
   if (ratio === "custom") return 9 / 16;
   const [width, height] = ratio.split(":").map(Number);
   return width && height ? width / height : 9 / 16;
+}
+
+/**
+ * Builds a WebVTT captions track from the script's timed segments.
+ *
+ * A `data:` URL rather than a Blob URL: this only ever needs to exist for as
+ * long as the `<track>` element does, and a Blob URL would need its own
+ * effect and cleanup to avoid leaking one per render. Segments with no timing
+ * (`startMs`/`endMs` null) are skipped — a caption with no time to appear at
+ * is not a caption, and guessing one would put it at the wrong moment.
+ */
+function captionsTrackUrl(segments: readonly EditorSegment[]): string | null {
+  const timed = segments.filter(
+    (segment): segment is EditorSegment & { startMs: number; endMs: number } =>
+      segment.startMs !== null && segment.endMs !== null && segment.endMs > segment.startMs,
+  );
+  if (timed.length === 0) return null;
+
+  const body = timed
+    .map((segment) => `${vttTimestamp(segment.startMs)} --> ${vttTimestamp(segment.endMs)}\n${segment.text}`)
+    .join("\n\n");
+  const vtt = `WEBVTT\n\n${body}\n`;
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
+}
+
+function vttTimestamp(ms: number): string {
+  const totalMs = Math.max(0, Math.round(ms));
+  const hours = Math.floor(totalMs / 3_600_000);
+  const minutes = Math.floor((totalMs % 3_600_000) / 60_000);
+  const seconds = Math.floor((totalMs % 60_000) / 1_000);
+  const millis = totalMs % 1_000;
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}.${pad(millis, 3)}`;
 }

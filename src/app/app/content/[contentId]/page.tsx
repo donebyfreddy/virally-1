@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
@@ -18,6 +18,8 @@ import { AppPage } from "@/components/app-ui/AppPage";
 import { EditorShell } from "@/components/editor/EditorShell";
 import { CONTENT_TYPE_LABELS } from "@/content/content-library";
 import { cn } from "@/lib/cn";
+import { getStorageAdapter } from "@/lib/storage";
+import type { StorageBucket } from "@/lib/storage/types";
 
 export const dynamic = "force-dynamic";
 
@@ -183,6 +185,27 @@ export default async function ContentDetailPage({
           .limit(50),
   ]);
 
+  // Signed per variant, not once for the item: a render is a `media_assets`
+  // row like any other, and reaching it always goes through a short-lived
+  // signed URL rather than a public one (see src/lib/storage/types.ts).
+  const renderedAssetIds = [
+    ...new Set(variants.map((variant) => variant.renderedAssetId).filter((id) => id !== null)),
+  ];
+  const renderedAssetUrls = new Map<string, string>();
+  if (renderedAssetIds.length > 0) {
+    const storage = getStorageAdapter();
+    const renderedAssets = await db
+      .select({ id: mediaAssets.id, bucket: mediaAssets.bucket, storagePath: mediaAssets.storagePath })
+      .from(mediaAssets)
+      .where(inArray(mediaAssets.id, renderedAssetIds));
+    await Promise.all(
+      renderedAssets.map(async (asset) => {
+        const url = await storage.getSignedUrl(asset.bucket as StorageBucket, asset.storagePath, 3600);
+        renderedAssetUrls.set(asset.id, url);
+      }),
+    );
+  }
+
   // Segments arrive as a left join, so a script with no segments yields one row
   // of nulls. Filtered here rather than in the component, which should not have
   // to know about the join's shape.
@@ -245,7 +268,12 @@ export default async function ContentDetailPage({
           campaignId: item.campaignId,
           campaignName: item.campaignName,
         }}
-        variants={variants}
+        variants={variants.map((variant) => ({
+          ...variant,
+          renderedAssetUrl: variant.renderedAssetId
+            ? (renderedAssetUrls.get(variant.renderedAssetId) ?? null)
+            : null,
+        }))}
         segments={segments}
         assets={assets}
         availableCampaigns={availableCampaigns}
