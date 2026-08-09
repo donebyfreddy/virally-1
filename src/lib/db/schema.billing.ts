@@ -181,6 +181,8 @@ export const creditReservations = pgTable(
 
     /** Provider runs this reservation covers. */
     providerRunIds: jsonb("provider_run_ids").notNull().default([]),
+    /** Number of runs that must be linked before a batch hold may settle. */
+    expectedRunCount: integer("expected_run_count").notNull().default(1),
 
     /**
      * When an unsettled hold may be swept back.
@@ -199,6 +201,10 @@ export const creditReservations = pgTable(
   },
   (table) => ({
     reservedCheck: check("credit_reservations_reserved_check", sql`credits_reserved > 0`),
+    expectedRunsCheck: check(
+      "credit_reservations_expected_runs_check",
+      sql`expected_run_count >= 1`,
+    ),
     // A settlement may not charge more than was authorised. This is the
     // constraint that makes "you will never be billed above the estimate" a
     // property of the database rather than a promise in the UI.

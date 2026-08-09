@@ -50,6 +50,20 @@
       "when": 1786085622121,
       "tag": "0006_dark_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786268641738,
+      "tag": "0007_confused_talos",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786268780898,
+      "tag": "0008_broken_thunderball",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { TriangleAlert } from "lucide-react";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { signInPathFor, PRODUCT_HOME } from "@/lib/auth/routes";
@@ -10,16 +9,23 @@ import {
   campaigns,
   contentItems,
   contentVariants,
+  jobs,
   mediaAssets,
   scripts,
   scriptSegments,
+  shots,
+  storyboards,
 } from "@/lib/db/schema.fragment";
+import { providerRuns } from "@/lib/db/schema.creative";
 import { AppPage } from "@/components/app-ui/AppPage";
 import { EditorShell } from "@/components/editor/EditorShell";
 import { CONTENT_TYPE_LABELS } from "@/content/content-library";
-import { cn } from "@/lib/cn";
 import { getStorageAdapter } from "@/lib/storage";
 import type { StorageBucket } from "@/lib/storage/types";
+import {
+  ContentGenerationState,
+  type ContentGenerationStatus,
+} from "@/components/content/ContentGenerationState";
 
 export const dynamic = "force-dynamic";
 
@@ -67,16 +73,10 @@ export async function generateMetadata({
  */
 export default async function ContentDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ contentId: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { contentId } = await params;
-  const rawPartialErrors = (await searchParams).partialErrors;
-  const partialErrorCount = Number(
-    Array.isArray(rawPartialErrors) ? rawPartialErrors[0] : rawPartialErrors,
-  );
 
   const session = await readSession();
   if (session.status === "unconfigured") redirect(PRODUCT_HOME);
@@ -95,6 +95,17 @@ export default async function ContentDetailPage({
       contentType: contentItems.contentType,
       language: contentItems.language,
       status: contentItems.status,
+      generationStatus: contentItems.generationStatus,
+      generationErrorCode: contentItems.generationErrorCode,
+      generationErrorMessage: contentItems.generationErrorMessage,
+      generationErrorStage: contentItems.generationErrorStage,
+      generationStartedAt: contentItems.generationStartedAt,
+      generationElapsedSeconds: sql<number>`case
+        when ${contentItems.generationStartedAt} is null then 0
+        else greatest(0, extract(epoch from (now() - ${contentItems.generationStartedAt}))::int)
+      end`,
+      estimatedCredits: contentItems.estimatedCredits,
+      generationPlan: contentItems.generationPlan,
       caption: contentItems.caption,
       callToAction: contentItems.callToAction,
       durationMs: contentItems.durationMs,
@@ -185,6 +196,134 @@ export default async function ContentDetailPage({
           .limit(50),
   ]);
 
+  const [jobRows, runRows, storyboardRow] = await Promise.all([
+    db
+      .select({
+        id: jobs.id,
+        type: jobs.type,
+        status: jobs.status,
+        progress: jobs.progress,
+        provider: jobs.provider,
+        failureCode: jobs.failureCode,
+        failureMessage: jobs.failureMessage,
+        payload: jobs.payload,
+      })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.workspaceId, context.workspaceId),
+          sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+        ),
+      )
+      .orderBy(asc(jobs.createdAt)),
+    db
+      .select({
+        jobId: providerRuns.jobId,
+        provider: providerRuns.providerId,
+        model: providerRuns.model,
+        capability: providerRuns.capability,
+        failureCode: providerRuns.failureCode,
+        failureMessage: providerRuns.failureMessage,
+      })
+      .from(providerRuns)
+      .innerJoin(jobs, eq(providerRuns.jobId, jobs.id))
+      .where(
+        and(
+          eq(providerRuns.workspaceId, context.workspaceId),
+          sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+        ),
+      )
+      .orderBy(asc(providerRuns.createdAt)),
+    db
+      .select({ id: storyboards.id })
+      .from(storyboards)
+      .where(and(eq(storyboards.contentItemId, contentId), eq(storyboards.isCurrent, true)))
+      .limit(1),
+  ]);
+
+  const shotRows = storyboardRow[0]
+    ? await db
+        .select({ assetId: shots.assetId })
+        .from(shots)
+        .where(eq(shots.storyboardId, storyboardRow[0].id))
+    : [];
+  const runByJob = new Map(runRows.filter((run) => run.jobId).map((run) => [run.jobId, run]));
+  const assetKinds = new Set(assets.map((asset) => asset.kind));
+  const required = requiredAssets(item.generationPlan);
+  const hasRenderedOutput = variants.some(
+    (variant) => variant.renderedAssetId !== null && assetKinds.has("export"),
+  );
+  const hasActiveRender = jobRows.some(
+    (job) =>
+      job.type === "content.render" &&
+      ["pending", "queued", "running", "waiting_external"].includes(job.status),
+  );
+  const hasActiveGeneration = jobRows.some((job) =>
+    ["pending", "queued", "running", "waiting_external"].includes(job.status),
+  );
+  const hasFailedGeneration = jobRows.some((job) =>
+    ["failed", "dead_letter", "cancelled"].includes(job.status),
+  );
+  const generationStatus: ContentGenerationStatus =
+    item.generationStatus ??
+    (hasRenderedOutput
+      ? "ready"
+      : hasActiveRender
+        ? "rendering"
+        : hasActiveGeneration
+          ? "generating"
+          : hasFailedGeneration
+            ? "failed"
+            : item.generationPlan
+              ? "planned"
+              : "ready");
+
+  if (generationStatus !== "ready") {
+    return (
+      <AppPage width="full">
+        <ContentGenerationState
+          contentId={contentId}
+          title={item.title ?? "Untitled item"}
+          status={generationStatus}
+          startedAt={item.generationStartedAt?.toISOString() ?? null}
+          initialElapsedSeconds={item.generationElapsedSeconds}
+          estimatedCredits={item.estimatedCredits}
+          completedVisuals={shotRows.filter((shot) => shot.assetId !== null).length}
+          totalVisuals={shotRows.length}
+          voiceRequired={required.voice}
+          voiceComplete={assetKinds.has("voiceover")}
+          musicRequired={required.music}
+          musicComplete={assetKinds.has("music")}
+          jobs={jobRows.map((job) => {
+            const run = runByJob.get(job.id);
+            return {
+              id: job.id,
+              type: job.type,
+              status: job.status,
+              progress: job.progress,
+              provider:
+                run?.provider ?? job.provider ?? readPayloadString(job.payload, "preferredProviderId"),
+              model:
+                run?.model === "pending"
+                  ? null
+                  : (run?.model ?? readPayloadString(job.payload, "modelId")),
+              capability:
+                run?.capability ??
+                readPayloadString(job.payload, "capability"),
+              failureCode: run?.failureCode ?? job.failureCode,
+              failureMessage: run?.failureMessage ?? job.failureMessage,
+            };
+          })}
+          error={{
+            code: item.generationErrorCode,
+            message: item.generationErrorMessage,
+            stage: item.generationErrorStage,
+          }}
+        />
+      </AppPage>
+    );
+  }
+
   // Signed per variant, not once for the item: a render is a `media_assets`
   // row like any other, and reaching it always goes through a short-lived
   // signed URL rather than a public one (see src/lib/storage/types.ts).
@@ -221,37 +360,6 @@ export default async function ContentDetailPage({
 
   return (
     <AppPage width="full">
-      {/* From Quick Content's generate step: some assets started (and reserved
-          real credits) before one was refused. Shown here, not as a blocking
-          error on the form, because the content this page is for already
-          exists and already has assets in flight — the notice is a status,
-          not something the user needs to resolve to proceed. */}
-      {Number.isFinite(partialErrorCount) && partialErrorCount > 0 && (
-        <div
-          className={cn(
-            "mb-[var(--app-panel-gap)] flex items-start gap-[var(--space-3)] rounded-[var(--radius-card)]",
-            "border border-[var(--warning-mark)] bg-[var(--warning-soft)]",
-            "px-[var(--app-panel-pad)] py-[var(--space-4)]",
-          )}
-        >
-          <TriangleAlert
-            aria-hidden="true"
-            size={16}
-            strokeWidth={2}
-            className="mt-0.5 shrink-0 text-[color:var(--warning)]"
-          />
-          <div className="min-w-0">
-            <p className="text-[length:var(--text-app-cell)] font-[var(--weight-heading)] text-[color:var(--warning)]">
-              Some assets could not be generated
-            </p>
-            <p className="mt-1 max-w-[70ch] text-[length:var(--text-app-cell)] text-[color:var(--text-primary)]">
-              {partialErrorCount} of the assets this plan called for did not start. The rest
-              did, and reserved credits as usual — see what came through below.
-            </p>
-          </div>
-        </div>
-      )}
-
       <EditorShell
         item={{
           id: item.id,
@@ -280,4 +388,21 @@ export default async function ContentDetailPage({
       />
     </AppPage>
   );
+}
+
+function requiredAssets(plan: unknown): { voice: boolean; music: boolean } {
+  if (typeof plan !== "object" || plan === null) return { voice: false, music: false };
+  const assets = (plan as { assets?: unknown }).assets;
+  if (typeof assets !== "object" || assets === null) return { voice: false, music: false };
+  const values = assets as { voiceovers?: unknown; musicTracks?: unknown };
+  return {
+    voice: typeof values.voiceovers === "number" && values.voiceovers > 0,
+    music: typeof values.musicTracks === "number" && values.musicTracks > 0,
+  };
+}
+
+function readPayloadString(payload: unknown, key: string): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
 }

@@ -36,6 +36,7 @@ import { CellThumb, DataTable, PrimaryCell, type Column } from "@/components/app
 import { FilterBar } from "@/components/app-ui/FilterBar";
 import { EmptyState } from "@/components/app-ui/States";
 import { StatusChip } from "@/components/app-ui/StatusChip";
+import { StatusDot, type MachineStatus } from "@/components/primitives/StatusDot";
 import { ButtonLink } from "@/components/primitives/ButtonLink";
 import { PLATFORM_OPTIONS } from "@/content/create";
 import {
@@ -78,6 +79,7 @@ type ContentRow = {
   contentType: string;
   language: string;
   status: ReviewStatus;
+  generationStatus: ProductionStatus | null;
   durationMs: number | null;
   origin: string;
   updatedAt: Date;
@@ -88,6 +90,15 @@ type ContentRow = {
   /** Comma-separated platform ids, or null when the item has no variants. */
   platforms: string | null;
 };
+
+type ProductionStatus =
+  | "planned"
+  | "queued"
+  | "generating"
+  | "rendering"
+  | "ready"
+  | "failed"
+  | "cancelled";
 
 /** Everything the list knows about one item, after the second query phase. */
 type ContentCard = ContentRow & {
@@ -224,6 +235,7 @@ export default async function ContentPage({
           contentType: contentItems.contentType,
           language: contentItems.language,
           status: contentItems.status,
+          generationStatus: contentItems.generationStatus,
           durationMs: contentItems.durationMs,
           origin: contentItems.origin,
           updatedAt: contentItems.updatedAt,
@@ -512,8 +524,9 @@ export default async function ContentPage({
       header: "Approval",
       cell: (row) => (
         <span className="flex items-center gap-[var(--space-2)]">
-          <StatusChip status={row.status} />
-          {row.origin === "mock" && <DemoChip />}
+          <ContentLifecycleStatus row={row} />
+          {(row.generationStatus === "ready" || row.generationStatus === null) &&
+            row.origin === "mock" && <DemoChip />}
         </span>
       ),
     },
@@ -817,7 +830,7 @@ function ContentTile({ row }: { row: ContentCard }) {
               .join(" · ")}
           </p>
         </div>
-        <StatusChip status={row.status} compact />
+        <ContentLifecycleStatus row={row} compact />
       </div>
 
       <div className="flex flex-1 flex-col gap-[var(--space-3)] px-[var(--app-panel-pad)] pb-[var(--app-panel-pad)]">
@@ -875,6 +888,19 @@ function ContentTile({ row }: { row: ContentCard }) {
       </div>
     </Card>
   );
+}
+
+function ContentLifecycleStatus({ row, compact = false }: { row: ContentRow; compact?: boolean }) {
+  if (row.generationStatus && row.generationStatus !== "ready") {
+    const status: MachineStatus =
+      row.generationStatus === "planned"
+        ? "planning"
+        : row.generationStatus === "failed"
+          ? "error"
+          : row.generationStatus;
+    return <StatusDot status={status} showLabel={!compact} />;
+  }
+  return <StatusChip status={row.status} compact={compact} />;
 }
 
 /**

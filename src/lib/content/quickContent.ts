@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { readSession } from "@/lib/auth/session";
 import { resolveTenantContext } from "@/lib/tenant/context";
 import { can } from "@/lib/permissions";
@@ -10,6 +10,8 @@ import {
   activityEvents,
   contentItems,
   contentVariants,
+  jobs,
+  mediaAssets,
   scriptSegments,
   scripts,
   shots,
@@ -37,7 +39,16 @@ import { DEFAULT_PRODUCTION_MODE } from "@/lib/creative/modes";
 import { tenantScope } from "@/lib/creative/scope";
 import type { ProductionMode } from "@/lib/creative/types";
 import { startGeneration } from "@/lib/generation/service";
+import {
+  InsufficientCreditsError,
+  releaseReservation,
+  reserveCredits,
+  setReservationExpectedRuns,
+} from "@/lib/creative/credits";
 import type { AspectRatio, Platform } from "@/types/database";
+import { isFalConfigured } from "@/lib/creative/env";
+import { isContentReadyToRender } from "@/lib/creative/contentRender";
+import { enqueueJob } from "@/lib/jobs/queue";
 
 /**
  * Quick Content: one content item, created directly, with no campaign.
@@ -246,6 +257,7 @@ export async function planQuickContent(
       productionMode: mode,
       origin,
       generationPlan: plan,
+      generationStatus: "planned",
       estimatedCredits: estimate.credits,
       createdBy: context.user.id,
     })
@@ -347,11 +359,9 @@ export type QuickContentGenerateOutcome = {
   jobsStarted: number;
   isMock: boolean;
   /**
-   * Reasons any individual asset was refused. Non-fatal by design: the shots
-   * before a refused one already started and reserved real credits, so an
-   * early `ok: false` would hide successful work behind an error that reads
-   * as "nothing happened." The caller always has a `contentId` to show
-   * whatever did start; this is what it shows alongside it.
+   * Reasons any individual asset was refused. Successful starts are preserved
+   * and the content is moved to a visible failed state when the batch cannot
+   * be completed, so the caller can offer a targeted retry on the same item.
    */
   errors: readonly string[];
 };
@@ -359,10 +369,9 @@ export type QuickContentGenerateOutcome = {
 /**
  * The paid step. Re-reads the plan `planQuickContent` persisted — never the
  * client's copy of it — and submits one real generation per shot, plus
- * voiceover and music if requested, through `startGeneration`. Each call
- * reserves its own credits and enqueues its own job; this function does not
- * reserve anything itself; there is nothing durable to reserve beyond what
- * each generation already withholds.
+ * voiceover and music if requested, through `startGeneration`. The complete
+ * estimate is reserved once before any provider work begins; every job links
+ * to that batch hold so completed runs settle it exactly once.
  */
 export async function generateQuickContent(
   contentId: string,
@@ -378,6 +387,7 @@ export async function generateQuickContent(
       contentType: contentItems.contentType,
       productionMode: contentItems.productionMode,
       generationPlan: contentItems.generationPlan,
+      generationStatus: contentItems.generationStatus,
     })
     .from(contentItems)
     .where(
@@ -390,6 +400,12 @@ export async function generateQuickContent(
     .limit(1);
 
   if (!item) return { ok: false, error: "That content item is not available in this workspace." };
+  if (
+    item.generationStatus &&
+    item.generationStatus !== "planned"
+  ) {
+    return { ok: false, error: "Generation has already started for this content item." };
+  }
 
   const plan = isQuickContentPlanSnapshot(item.generationPlan) ? item.generationPlan : null;
   if (!plan) {
@@ -433,6 +449,12 @@ export async function generateQuickContent(
     .limit(1);
 
   const isVideoContentType = item.contentType === "short_video" || item.contentType === "long_video";
+  if (shotRows.length === 0) {
+    return { ok: false, error: "The storyboard has no shots. Edit the plan before generating." };
+  }
+  if (plan.assets.voiceovers > 0 && !scriptRow?.fullText?.trim()) {
+    return { ok: false, error: "The script is empty. Generate a valid script before production." };
+  }
 
   // The mode-typical video count decides how many of the REAL shots become a
   // video generation rather than a still — the same split the estimate was
@@ -440,6 +462,63 @@ export async function generateQuickContent(
   // a formula. Every shot still gets exactly one asset; nothing here
   // multiplies a shot into several.
   const videoCount = isVideoContentType ? Math.min(plan.assets.aiVideoClips, shotRows.length) : 0;
+  const requiredProvider = isFalConfigured() ? "fal" : null;
+  const expectedJobCount =
+    shotRows.length +
+    (plan.assets.voiceovers > 0 ? 1 : 0) +
+    (plan.assets.musicTracks > 0 ? 1 : 0);
+
+  const claimed = await db
+    .update(contentItems)
+    .set({
+      generationStatus: "queued",
+      generationStartedAt: new Date(),
+      generationCompletedAt: null,
+      generationErrorCode: null,
+      generationErrorMessage: null,
+      generationErrorStage: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(contentItems.id, contentId),
+        eq(contentItems.workspaceId, context.workspaceId),
+        or(isNull(contentItems.generationStatus), eq(contentItems.generationStatus, "planned")),
+      ),
+    )
+    .returning({ id: contentItems.id });
+  if (claimed.length === 0) {
+    return { ok: false, error: "Generation has already started for this content item." };
+  }
+
+  let reservationId: string;
+  try {
+    const reservation = await reserveCredits({
+      scope,
+      idempotencyKey: `quick-content:${contentId}:initial`,
+      credits: Math.max(1, plan.estimatedCredits),
+      purpose: "single_generation",
+      createdBy: context.user.id,
+      expectedRunCount: expectedJobCount,
+    });
+    reservationId = reservation.id;
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      await db
+        .update(contentItems)
+        .set({ generationStatus: "planned", generationStartedAt: null, updatedAt: new Date() })
+        .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, context.workspaceId)));
+      return {
+        ok: false,
+        error: `Not enough Production Credits. Required: ${error.required}. Available: ${error.available}.`,
+      };
+    }
+    await db
+      .update(contentItems)
+      .set({ generationStatus: "planned", generationStartedAt: null, updatedAt: new Date() })
+      .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, context.workspaceId)));
+    throw error;
+  }
 
   let jobsStarted = 0;
   let sawMock = false;
@@ -464,6 +543,10 @@ export async function generateQuickContent(
       campaignId: null,
       createdBy: context.user.id,
       allowMockFallback: false,
+      reservationId,
+      idempotencyKey: `quick-content:${contentId}:shot:${shot.id}:attempt:1`,
+      preferredProviderId: requiredProvider,
+      requirePreferredProvider: requiredProvider !== null,
     });
 
     if (outcome.status === "started") {
@@ -485,6 +568,10 @@ export async function generateQuickContent(
       campaignId: null,
       createdBy: context.user.id,
       allowMockFallback: false,
+      reservationId,
+      idempotencyKey: `quick-content:${contentId}:voice:attempt:1`,
+      preferredProviderId: requiredProvider,
+      requirePreferredProvider: requiredProvider !== null,
     });
     if (outcome.status === "started") {
       jobsStarted += 1;
@@ -505,6 +592,10 @@ export async function generateQuickContent(
       campaignId: null,
       createdBy: context.user.id,
       allowMockFallback: false,
+      reservationId,
+      idempotencyKey: `quick-content:${contentId}:music:attempt:1`,
+      preferredProviderId: requiredProvider,
+      requirePreferredProvider: requiredProvider !== null,
     });
     if (outcome.status === "started") {
       jobsStarted += 1;
@@ -512,6 +603,39 @@ export async function generateQuickContent(
     } else if (outcome.status === "refused") {
       errors.push(outcome.reason);
     }
+  }
+
+  if (jobsStarted === 0) {
+    await releaseReservation(scope, reservationId, "No provider job could be started.");
+  } else {
+    await setReservationExpectedRuns(scope, reservationId, jobsStarted);
+    if (!sawMock) {
+      await Promise.all([
+        db
+          .update(contentItems)
+          .set({ origin: "provider", updatedAt: new Date() })
+          .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, context.workspaceId))),
+        db
+          .update(contentVariants)
+          .set({ origin: "provider", updatedAt: new Date() })
+          .where(eq(contentVariants.contentItemId, contentId)),
+      ]);
+    }
+  }
+
+  if (errors.length > 0 || jobsStarted === 0) {
+    await db
+      .update(contentItems)
+      .set({
+        generationStatus: "failed",
+        generationErrorCode:
+          jobsStarted === 0 ? "PROVIDER_UNAVAILABLE" : "PARTIAL_SUBMISSION_FAILED",
+        generationErrorMessage: errors[0] ?? "No generation job could be started.",
+        generationErrorStage: "asset_generation",
+        generationCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, context.workspaceId)));
   }
 
   await db.insert(activityEvents).values({
@@ -528,4 +652,233 @@ export async function generateQuickContent(
   revalidatePath("/app/content");
 
   return { ok: true, data: { contentId, jobsStarted, isMock: sawMock, errors } };
+}
+
+/**
+ * Retries only missing or failed production work for an existing item.
+ * Completed shots and audio assets are read from storage-backed rows and are
+ * never submitted again. Attempt-numbered idempotency keys keep history while
+ * making a double click converge on the same retry.
+ */
+export async function retryQuickContentGeneration(
+  contentId: string,
+): Promise<QuickActionResult<{ contentId: string; jobsStarted: number }>> {
+  const gate = await authoriseQuickContent();
+  if (!gate.ok) return gate;
+  const { context } = gate;
+  const scope = tenantScope(context.organizationId, context.workspaceId);
+
+  const [item] = await db
+    .select({
+      id: contentItems.id,
+      title: contentItems.title,
+      contentType: contentItems.contentType,
+      productionMode: contentItems.productionMode,
+      generationPlan: contentItems.generationPlan,
+      generationStatus: contentItems.generationStatus,
+    })
+    .from(contentItems)
+    .where(
+      and(
+        eq(contentItems.id, contentId),
+        eq(contentItems.workspaceId, context.workspaceId),
+        isNull(contentItems.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!item) return { ok: false, error: "That content item is not available in this workspace." };
+  if (item.generationStatus !== "failed") {
+    return { ok: false, error: "Only a failed generation can be retried." };
+  }
+
+  const activeRows = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.workspaceId, context.workspaceId),
+        sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+        sql`${jobs.status} in ('pending', 'queued', 'running', 'waiting_external')`,
+      ),
+    )
+    .limit(1);
+  if (activeRows.length > 0) {
+    return { ok: false, error: "The remaining generation jobs are still running." };
+  }
+
+  const plan = isQuickContentPlanSnapshot(item.generationPlan) ? item.generationPlan : null;
+  if (!plan) return { ok: false, error: "No saved generation plan is available." };
+
+  if (await isContentReadyToRender(scope, contentId)) {
+    const renderAttempts = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.workspaceId, context.workspaceId),
+          eq(jobs.type, "content.render"),
+          sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+        ),
+      );
+    const attempt = renderAttempts.length + 1;
+    const result = await enqueueJob({
+      organizationId: context.organizationId,
+      workspaceId: context.workspaceId,
+      userId: context.user.id,
+      type: "content.render",
+      payload: { contentItemId: contentId },
+      idempotencyKey: `content.render:${contentId}:attempt:${attempt}`,
+      priority: 3,
+    });
+    await setContentQueued(contentId, context.workspaceId);
+    revalidatePath(`/app/content/${contentId}`);
+    return { ok: true, data: { contentId, jobsStarted: result.created ? 1 : 0 } };
+  }
+
+  const [storyboard] = await db
+    .select({ id: storyboards.id })
+    .from(storyboards)
+    .where(and(eq(storyboards.contentItemId, contentId), eq(storyboards.isCurrent, true)))
+    .limit(1);
+  if (!storyboard) return { ok: false, error: "No storyboard is available for retry." };
+
+  const missingShots = await db
+    .select({
+      id: shots.id,
+      position: shots.position,
+      prompt: shots.visualPrompt,
+      description: shots.description,
+      durationMs: shots.durationMs,
+    })
+    .from(shots)
+    .where(and(eq(shots.storyboardId, storyboard.id), isNull(shots.assetId)))
+    .orderBy(asc(shots.position));
+
+  const existingAssets = await db
+    .select({ kind: mediaAssets.kind })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.contentItemId, contentId), isNull(mediaAssets.deletedAt)));
+  const presentKinds = new Set(existingAssets.map((asset) => asset.kind));
+  const [variant] = await db
+    .select({ aspectRatio: contentVariants.aspectRatio })
+    .from(contentVariants)
+    .where(eq(contentVariants.contentItemId, contentId))
+    .limit(1);
+  const [script] = await db
+    .select({ fullText: scripts.fullText })
+    .from(scripts)
+    .where(and(eq(scripts.contentItemId, contentId), eq(scripts.isCurrent, true)))
+    .limit(1);
+
+  const mode: ProductionMode = VALID_QUICK_MODES.has(item.productionMode as ProductionMode)
+    ? (item.productionMode as ProductionMode)
+    : DEFAULT_PRODUCTION_MODE;
+  const requiredProvider = isFalConfigured() ? "fal" : null;
+  const videoCount =
+    item.contentType === "short_video" || item.contentType === "long_video"
+      ? plan.assets.aiVideoClips
+      : 0;
+  let jobsStarted = 0;
+  const errors: string[] = [];
+
+  for (const shot of missingShots) {
+    const previous = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.workspaceId, context.workspaceId),
+          sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+          sql`${jobs.payload}->>'shotId' = ${shot.id}`,
+        ),
+      );
+    const attempt = previous.length + 1;
+    const outcome = await startGeneration(scope, {
+      capability: shot.position < videoCount ? "text-to-video" : "text-to-image",
+      prompt: shot.prompt || shot.description || plan.hook,
+      mode,
+      quality: QUICK_QUALITY,
+      ratio: variant?.aspectRatio ?? plan.ratio,
+      durationSeconds: shot.durationMs ? Math.max(1, Math.round(shot.durationMs / 1000)) : undefined,
+      contentItemId: contentId,
+      shotId: shot.id,
+      createdBy: context.user.id,
+      idempotencyKey: `quick-content:${contentId}:shot:${shot.id}:attempt:${attempt}`,
+      preferredProviderId: requiredProvider,
+      requirePreferredProvider: requiredProvider !== null,
+      allowMockFallback: false,
+    });
+    if (outcome.status === "started") jobsStarted += 1;
+    else if (outcome.status === "refused") errors.push(outcome.reason);
+  }
+
+  const audioRequests = [
+    plan.assets.voiceovers > 0 && !presentKinds.has("voiceover") && script?.fullText
+      ? { capability: "audio" as const, prompt: script.fullText, key: "voice" }
+      : null,
+    plan.assets.musicTracks > 0 && !presentKinds.has("music")
+      ? { capability: "music" as const, prompt: `Instrumental background music for: ${item.title}`, key: "music" }
+      : null,
+  ].filter((request): request is NonNullable<typeof request> => request !== null);
+
+  for (const request of audioRequests) {
+    const previous = await db
+      .select({ id: jobs.id })
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.workspaceId, context.workspaceId),
+          sql`${jobs.payload}->>'contentItemId' = ${contentId}`,
+          sql`${jobs.payload}->>'capability' = ${request.capability}`,
+        ),
+      );
+    const attempt = previous.length + 1;
+    const outcome = await startGeneration(scope, {
+      capability: request.capability,
+      prompt: request.prompt,
+      mode,
+      quality: QUICK_QUALITY,
+      durationSeconds: plan.durationSeconds ?? 20,
+      contentItemId: contentId,
+      createdBy: context.user.id,
+      idempotencyKey: `quick-content:${contentId}:${request.key}:attempt:${attempt}`,
+      preferredProviderId: requiredProvider,
+      requirePreferredProvider: requiredProvider !== null,
+      allowMockFallback: false,
+    });
+    if (outcome.status === "started") jobsStarted += 1;
+    else if (outcome.status === "refused") errors.push(outcome.reason);
+  }
+
+  if (jobsStarted === 0) {
+    return { ok: false, error: errors[0] ?? "There is no failed step available to retry." };
+  }
+
+  await Promise.all([
+    db
+      .update(contentItems)
+      .set({ origin: "provider", updatedAt: new Date() })
+      .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, context.workspaceId))),
+    db
+      .update(contentVariants)
+      .set({ origin: "provider", updatedAt: new Date() })
+      .where(eq(contentVariants.contentItemId, contentId)),
+  ]);
+  await setContentQueued(contentId, context.workspaceId);
+  revalidatePath(`/app/content/${contentId}`);
+  return { ok: true, data: { contentId, jobsStarted } };
+}
+
+async function setContentQueued(contentId: string, workspaceId: string): Promise<void> {
+  await db
+    .update(contentItems)
+    .set({
+      generationStatus: "queued",
+      generationErrorCode: null,
+      generationErrorMessage: null,
+      generationErrorStage: null,
+      generationCompletedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(contentItems.id, contentId), eq(contentItems.workspaceId, workspaceId)));
 }

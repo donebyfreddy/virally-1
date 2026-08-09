@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { activityEvents, auditLogs, providerRuns } from "@/lib/db/schema";
+import { activityEvents, auditLogs, creditReservations, providerRuns } from "@/lib/db/schema";
 import {
   audioKindForCapability,
   kindForCapability,
@@ -71,6 +71,8 @@ export type GenerationRequest = {
   modelId?: string | null;
   /** Pin a provider. Absent means automatic. */
   preferredProviderId?: string | null;
+  /** Refuse instead of falling through when the pinned provider cannot serve the request. */
+  requirePreferredProvider?: boolean;
 
   /** Required for consent-gated capabilities. */
   consent?: LikenessConsent | null;
@@ -92,6 +94,11 @@ export type GenerationRequest = {
   createdBy?: string | null;
   /** True only in development and tests. Never for a paid generation. */
   allowMockFallback?: boolean;
+  /**
+   * Existing batch hold created by a trusted server-side orchestrator.
+   * When present this step must not create another per-asset hold.
+   */
+  reservationId?: string;
 };
 
 export type StartOutcome =
@@ -158,6 +165,18 @@ export async function startGeneration(
     return { status: "refused", kind: "unavailable", reason: decision.reason };
   }
 
+  if (
+    request.requirePreferredProvider &&
+    request.preferredProviderId &&
+    decision.provider.id !== request.preferredProviderId
+  ) {
+    return {
+      status: "refused",
+      kind: "unavailable",
+      reason: `${request.preferredProviderId} is required for this generation but cannot serve the request.`,
+    };
+  }
+
   const provider = decision.provider;
   const candidates = await router.availableModels(request.capability, request.mode);
   const model = resolveModel(candidates, decision.model ?? null, request.modelId ?? null);
@@ -182,30 +201,53 @@ export async function startGeneration(
   // rather than merely unlikely.
   const idempotencyKey = request.idempotencyKey ?? deriveIdempotencyKey(scope, request);
 
-  let reservationId: string;
-  try {
-    const reservation = await reserveCredits({
-      scope,
-      idempotencyKey: `gen:${idempotencyKey}`,
-      // At least one credit even for a free mock run, because `reserveCredits`
-      // refuses a zero reservation and a generation with no hold has nothing to
-      // settle against.
-      credits: Math.max(1, estimate.internalCredits),
-      purpose: request.shotId ? "regeneration" : "single_generation",
-      campaignId: request.campaignId ?? null,
-      createdBy: request.createdBy ?? null,
-    });
-    reservationId = reservation.id;
-  } catch (error) {
-    if (error instanceof InsufficientCreditsError) {
+  let reservationId = request.reservationId;
+  if (reservationId) {
+    const [hold] = await db
+      .select({ id: creditReservations.id })
+      .from(creditReservations)
+      .where(
+        and(
+          eq(creditReservations.id, reservationId),
+          eq(creditReservations.organizationId, scope.organizationId),
+          eq(creditReservations.workspaceId, scope.workspaceId),
+          eq(creditReservations.state, "held"),
+        ),
+      )
+      .limit(1);
+    if (!hold) {
       return {
         status: "refused",
         kind: "credits",
-        reason: `This generation needs ${estimate.internalCredits} Production Credits and the workspace has ${error.available}.`,
-        shortfall: error.required - error.available,
+        reason: "The Production Credit reservation is no longer active.",
       };
     }
-    throw error;
+  }
+  if (!reservationId) {
+    try {
+      const reservation = await reserveCredits({
+        scope,
+        idempotencyKey: `gen:${idempotencyKey}`,
+        // At least one credit even for a free mock run, because `reserveCredits`
+        // refuses a zero reservation and a generation with no hold has nothing to
+        // settle against.
+        credits: Math.max(1, estimate.internalCredits),
+        purpose: request.shotId ? "regeneration" : "single_generation",
+        campaignId: request.campaignId ?? null,
+        createdBy: request.createdBy ?? null,
+      });
+      reservationId = reservation.id;
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
+        return {
+          status: "refused",
+          kind: "credits",
+          reason: `This generation needs ${estimate.internalCredits} Production Credits and the workspace has ${error.available}.`,
+          shortfall: error.required - error.available,
+        };
+      }
+      throw error;
+    }
   }
 
   // 6 — Enqueue. The worker submits and polls; nothing long-running happens in

@@ -5,6 +5,7 @@ import { settleReservation } from "./credits";
 import { IngestError, ingestRunOutputs } from "./ingest";
 import { centsToCredits } from "./modes";
 import { getProviderRouter } from "./router";
+import { isBatchReservationComplete } from "./creditPolicy";
 import type { TenantScope } from "./scope";
 import { assertScope } from "./scope";
 import { applyStatus, completeRun, createOrGetRun, recordSubmission } from "./runs";
@@ -181,6 +182,8 @@ export type PollOutcome = {
   runId: string;
   state: string;
   progress: number | null;
+  failureCode: string | null;
+  failureMessage: string | null;
   /** True when this poll advanced the run to a terminal state. */
   terminal: boolean;
 };
@@ -205,6 +208,8 @@ export async function pollRun(scope: TenantScope, runId: string): Promise<PollOu
       generationType: providerRuns.generationType,
       state: providerRuns.state,
       estimatedInternalCents: providerRuns.estimatedInternalCents,
+      failureCode: providerRuns.failureCode,
+      failureMessage: providerRuns.failureMessage,
     })
     .from(providerRuns)
     .where(
@@ -224,17 +229,24 @@ export async function pollRun(scope: TenantScope, runId: string): Promise<PollOu
   // the worker had already given up on — forever, since nothing would ever move
   // it on.
   if (isTerminalRunState(run.state)) {
-    return { runId, state: run.state, progress: null, terminal: true };
+    return {
+      runId,
+      state: run.state,
+      progress: null,
+      failureCode: run.failureCode,
+      failureMessage: run.failureMessage,
+      terminal: true,
+    };
   }
   if (!run.externalTaskId) {
     // Submitted but never recorded an id — the crash case createOrGetRun exists
     // to make visible. Not a poll problem; the run needs re-submission.
-    return { runId, state: run.state, progress: null, terminal: false };
+    return { runId, state: run.state, progress: null, failureCode: null, failureMessage: null, terminal: false };
   }
 
   const provider = resolveProvider(run.providerId);
   if (!provider) {
-    return { runId, state: run.state, progress: null, terminal: false };
+    return { runId, state: run.state, progress: null, failureCode: null, failureMessage: null, terminal: false };
   }
 
   const status = await provider.getTaskStatus(
@@ -245,13 +257,20 @@ export async function pollRun(scope: TenantScope, runId: string): Promise<PollOu
   if (status.state === "failed") {
     await applyStatus(scope, runId, status);
     await settleFor(scope, runId);
-    return { runId, state: "failed", progress: null, terminal: true };
+    return {
+      runId,
+      state: "failed",
+      progress: null,
+      failureCode: status.failure?.code ?? "provider_error",
+      failureMessage: status.failure?.message ?? "The provider could not complete the generation.",
+      terminal: true,
+    };
   }
 
   // Not yet finished at the provider. Record progress and stop.
   if (status.state !== "downloading") {
     await applyStatus(scope, runId, status);
-    return { runId, state: status.state, progress: status.progress, terminal: false };
+    return { runId, state: status.state, progress: status.progress, failureCode: null, failureMessage: null, terminal: false };
   }
 
   // Provider is done. Record the URLs, then copy the bytes before anything
@@ -267,7 +286,7 @@ export async function pollRun(scope: TenantScope, runId: string): Promise<PollOu
       // even though Virally never got the bytes. Refunding here would absorb a
       // real cost silently.
       await settleFor(scope, runId);
-      return { runId, state: "failed", progress: null, terminal: true };
+      return { runId, state: "failed", progress: null, failureCode: "download_failed", failureMessage: error.message, terminal: true };
     }
     // Retryable: leave the run in `downloading` so the next poll tries again.
     throw error;
@@ -275,7 +294,7 @@ export async function pollRun(scope: TenantScope, runId: string): Promise<PollOu
 
   await completeRun(scope, runId, run.estimatedInternalCents);
   await settleFor(scope, runId);
-  return { runId, state: "completed", progress: 100, terminal: true };
+  return { runId, state: "completed", progress: 100, failureCode: null, failureMessage: null, terminal: true };
 }
 
 /**
@@ -304,6 +323,14 @@ async function settleFor(scope: TenantScope, runId: string): Promise<void> {
   try {
     const reservation = await reservationForRun(scope, runId);
     if (!reservation) return;
+    if (
+      !isBatchReservationComplete(
+        reservation.providerRunIds.length,
+        reservation.expectedRunCount,
+      )
+    ) {
+      return;
+    }
 
     const covered = await db
       .select({
@@ -329,13 +356,25 @@ async function settleFor(scope: TenantScope, runId: string): Promise<void> {
     // an already-settled reservation, so the second call is a no-op instead of a
     // double charge.
     await settleReservation(scope, reservation.id, centsToCredits(totalCents));
-  } catch {
-    // Swallowed deliberately. See the doc comment: the alternative is failing a
-    // generation the user already received.
+  } catch (error) {
+    // Settlement cannot revoke media already delivered, but it must remain
+    // observable so a stuck hold is not visible only as an unexplained balance.
+    console.error(
+      JSON.stringify({
+        event: "generation_credit_settlement_failed",
+        workspaceId: scope.workspaceId,
+        generationRunId: runId,
+        error: error instanceof Error ? error.message.slice(0, 300) : "Unknown settlement error",
+      }),
+    );
   }
 }
 
-type CoveringReservation = { id: string; providerRunIds: readonly string[] };
+type CoveringReservation = {
+  id: string;
+  providerRunIds: readonly string[];
+  expectedRunCount: number;
+};
 
 /**
  * Finds the held reservation covering a run.
@@ -356,6 +395,7 @@ async function reservationForRun(
     .select({
       id: creditReservations.id,
       providerRunIds: creditReservations.providerRunIds,
+      expectedRunCount: creditReservations.expectedRunCount,
     })
     .from(creditReservations)
     .where(
@@ -381,7 +421,7 @@ async function reservationForRun(
   // list means the column holds something malformed.
   if (!ids.includes(runId)) return null;
 
-  return { id: row.id, providerRunIds: ids };
+  return { id: row.id, providerRunIds: ids, expectedRunCount: row.expectedRunCount };
 }
 
 /**

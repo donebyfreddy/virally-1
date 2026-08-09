@@ -115,6 +115,7 @@ export type ReserveInput = {
   campaignId?: string | null;
   createdBy?: string | null;
   providerRunIds?: readonly string[];
+  expectedRunCount?: number;
 };
 
 export type Reservation = {
@@ -188,6 +189,7 @@ export async function reserveCredits(input: ReserveInput): Promise<Reservation> 
         creditsReserved: credits,
         state: "held",
         providerRunIds: [...(input.providerRunIds ?? [])],
+        expectedRunCount: Math.max(1, Math.trunc(input.expectedRunCount ?? 1)),
         expiresAt,
         idempotencyKey: input.idempotencyKey,
       })
@@ -208,6 +210,27 @@ export async function reserveCredits(input: ReserveInput): Promise<Reservation> 
 
     return { id: reservationId, creditsReserved: credits, state: "held" as const, created: true };
   });
+}
+
+/** Finalises the number of jobs accepted under a batch hold before workers settle it. */
+export async function setReservationExpectedRuns(
+  scope: TenantScope,
+  reservationId: string,
+  expectedRunCount: number,
+): Promise<void> {
+  assertScope(scope);
+  const count = Math.max(1, Math.trunc(expectedRunCount));
+  await db
+    .update(creditReservations)
+    .set({ expectedRunCount: count, updatedAt: new Date() })
+    .where(
+      and(
+        eq(creditReservations.id, reservationId),
+        eq(creditReservations.organizationId, scope.organizationId),
+        eq(creditReservations.workspaceId, scope.workspaceId),
+        eq(creditReservations.state, "held"),
+      ),
+    );
 }
 
 /**

@@ -183,11 +183,10 @@ export function QuickContentComposer({
         setError(result.error);
         return;
       }
-      // Redirect even when some assets were refused: the ones that started
-      // already reserved real credits, so landing back on this form would
-      // hide them behind an error that reads as "nothing happened."
-      const query = result.data.errors.length > 0 ? `?partialErrors=${result.data.errors.length}` : "";
-      router.push(`/app/content/${result.data.contentId}${query}`);
+      // The detail route is status-aware: it opens the persisted generation
+      // progress/error surface and only mounts the editor after a real render
+      // exists.
+      router.push(`/app/content/${result.data.contentId}`);
     });
   }
 

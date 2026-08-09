@@ -1,11 +1,15 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { jobs, providerRunOutputs } from "@/lib/db/schema";
+import { activityEvents, contentItems, jobs, providerRunOutputs } from "@/lib/db/schema";
 import { isContentReadyToRender } from "@/lib/creative/contentRender";
 import { pollRun, submitGeneration, type SubmitInput } from "@/lib/creative/pipeline";
 import { tenantScope } from "@/lib/creative/scope";
 import { attachAssetToCampaign, attachAssetToShot } from "@/lib/generation/attach";
 import { linkRunToReservation } from "@/lib/generation/service";
+import {
+  classifyGenerationError,
+  userMessageForGenerationError,
+} from "@/lib/generation/errors";
 import { MAX_JOB_AGE_MS, pollDelayMs } from "./backoff";
 import {
   awaitExternal,
@@ -16,6 +20,7 @@ import {
   type ClaimedJob,
   type JobType,
 } from "./queue";
+import { logGenerationStage } from "./generationLog";
 
 /**
  * The generation job handler.
@@ -90,6 +95,7 @@ export type HandlerResult =
 
 export async function handleGenerationJob(job: ClaimedJob): Promise<HandlerResult> {
   const payload = job.payload as GenerationJobPayload;
+  const handledAt = Date.now();
   // Tenancy from the row, never ambient. A worker has no session, so this is
   // the only honest source of scope it has.
   const scope = tenantScope(job.organizationId, job.workspaceId);
@@ -111,8 +117,21 @@ export async function handleGenerationJob(job: ClaimedJob): Promise<HandlerResul
     return { outcome: "abandoned", reason: "exceeded maximum job age" };
   }
 
-  if (!payload.providerRunId) return submitPhase(job, payload, scope);
-  return pollPhase(job, payload, scope, payload.providerRunId);
+  const result = !payload.providerRunId
+    ? await submitPhase(job, payload, scope)
+    : await pollPhase(job, payload, scope, payload.providerRunId);
+  logGenerationStage({
+    contentId: payload.contentItemId ?? null,
+    generationJobId: job.id,
+    workspaceId: job.workspaceId,
+    provider: payload.preferredProviderId ?? null,
+    model: payload.modelId ?? null,
+    stage: payload.capability ?? payload.kind,
+    durationMs: Date.now() - handledAt,
+    status: result.outcome,
+    errorCode: result.outcome === "failed" || result.outcome === "abandoned" ? result.reason : null,
+  });
+  return result;
 }
 
 async function submitPhase(
@@ -142,6 +161,7 @@ async function submitPhase(
       { code: "provider_unavailable", message: outcome.reason, retryable: false },
       { attempts: job.attempts, maxAttempts: job.maxAttempts },
     );
+    await markContentFailed(job, payload, "PROVIDER_UNAVAILABLE", outcome.reason);
     return { outcome: "failed", reason: outcome.reason };
   }
 
@@ -169,6 +189,8 @@ async function submitPhase(
     externalJobId: outcome.status === "submitted" ? outcome.externalTaskId : null,
   });
 
+  await markContentGenerating(job, payload);
+
   return { outcome: "submitted", runId };
 }
 
@@ -194,13 +216,19 @@ async function pollPhase(
     await failJob(
       job.id,
       {
-        code: `run_${poll.state}`,
-        message: `The generation ended as ${poll.state}.`,
+        code: poll.failureCode ?? `run_${poll.state}`,
+        message: poll.failureMessage ?? `The generation ended as ${poll.state}.`,
         retryable: false,
       },
       { attempts: job.attempts, maxAttempts: job.maxAttempts },
     );
-    return { outcome: "failed", reason: poll.state };
+    await markContentFailed(
+      job,
+      payload,
+      poll.failureCode ?? "provider_error",
+      poll.failureMessage ?? `The generation ended as ${poll.state}.`,
+    );
+    return { outcome: "failed", reason: poll.failureMessage ?? poll.state };
   }
 
   await persistPollCount(job.id, payload, pollCount);
@@ -229,10 +257,9 @@ async function pollPhase(
  * That decision travelled all the way through the job payload for exactly
  * this moment.
  *
- * Best-effort and non-fatal: the generation itself already succeeded and the
- * user was already charged for it. An attach failure here should surface as a
- * media asset sitting unfiled in the library, not as a completed generation
- * reported as failed.
+ * Attachment is part of delivery, not cosmetic bookkeeping. A failure throws
+ * so the queue retries and records it; otherwise the content can never become
+ * renderable and the UI would wait forever with the only evidence in stderr.
  */
 async function attachCompletedAssets(
   scope: ReturnType<typeof tenantScope>,
@@ -241,8 +268,7 @@ async function attachCompletedAssets(
 ): Promise<void> {
   if (!payload.campaignId && !payload.contentItemId && !payload.shotId) return;
 
-  try {
-    const outputs = await db
+  const outputs = await db
       .select({ mediaAssetId: providerRunOutputs.mediaAssetId })
       .from(providerRunOutputs)
       .where(
@@ -252,32 +278,29 @@ async function attachCompletedAssets(
         ),
       );
 
-    const assetIds = outputs
+  const assetIds = outputs
       .map((row) => row.mediaAssetId)
       .filter((id): id is string => id !== null);
 
-    for (const assetId of assetIds) {
+  for (const assetId of assetIds) {
       if (payload.campaignId || payload.contentItemId) {
         await attachAssetToCampaign(scope, assetId, {
           campaignId: payload.campaignId ?? null,
           contentItemId: payload.contentItemId ?? null,
         });
       }
-    }
+  }
 
     // A shot holds exactly one asset. The first output is the one that fills
     // it; a model that returns several outputs for one shot is not a case any
     // catalogued model produces today.
-    const [firstAssetId] = assetIds;
-    if (payload.shotId && firstAssetId) {
-      await attachAssetToShot(scope, payload.shotId, firstAssetId);
-    }
+  const [firstAssetId] = assetIds;
+  if (payload.shotId && firstAssetId) {
+    await attachAssetToShot(scope, payload.shotId, firstAssetId);
+  }
 
-    if (payload.contentItemId) {
-      await enqueueRenderIfReady(scope, payload.contentItemId);
-    }
-  } catch (error) {
-    console.error(`[jobs/generation] Could not attach the completed asset for run ${runId}.`, error);
+  if (payload.contentItemId) {
+    await enqueueRenderIfReady(scope, payload.contentItemId);
   }
 }
 
@@ -298,12 +321,87 @@ async function enqueueRenderIfReady(
   const ready = await isContentReadyToRender(scope, contentItemId);
   if (!ready) return;
 
-  await enqueueJob({
+  const enqueued = await enqueueJob({
     organizationId: scope.organizationId,
     workspaceId: scope.workspaceId,
     type: "content.render",
     payload: { contentItemId },
     idempotencyKey: `content.render:${contentItemId}`,
+  });
+  if (enqueued.created) {
+    await db
+      .update(contentItems)
+      .set({
+        generationStatus: "rendering",
+        generationErrorCode: null,
+        generationErrorMessage: null,
+        generationErrorStage: null,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(contentItems.id, contentItemId), eq(contentItems.workspaceId, scope.workspaceId)));
+  }
+}
+
+async function markContentGenerating(
+  job: ClaimedJob,
+  payload: GenerationJobPayload,
+): Promise<void> {
+  if (!payload.contentItemId) return;
+  await db
+    .update(contentItems)
+    .set({ generationStatus: "generating", updatedAt: new Date() })
+    .where(
+      and(
+        eq(contentItems.id, payload.contentItemId),
+        eq(contentItems.workspaceId, job.workspaceId),
+        sql`${contentItems.generationStatus} in ('queued', 'generating')`,
+      ),
+    );
+}
+
+async function markContentFailed(
+  job: ClaimedJob,
+  payload: GenerationJobPayload,
+  code: string,
+  message: string,
+): Promise<void> {
+  if (!payload.contentItemId) return;
+  const contentItemId = payload.contentItemId;
+  const stage = payload.capability ?? payload.kind;
+  const normalisedCode = classifyGenerationError(code, message);
+  const safeMessage = userMessageForGenerationError(
+    normalisedCode,
+    payload.preferredProviderId === "fal" ? "fal.ai" : (payload.preferredProviderId ?? "The provider"),
+    message,
+  );
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx
+      .update(contentItems)
+      .set({
+        generationStatus: "failed",
+        generationErrorCode: normalisedCode,
+        generationErrorMessage: safeMessage.slice(0, 500),
+        generationErrorStage: stage,
+        generationCompletedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(contentItems.id, contentItemId),
+          eq(contentItems.workspaceId, job.workspaceId),
+        ),
+      );
+    await tx.insert(activityEvents).values({
+      organizationId: job.organizationId,
+      workspaceId: job.workspaceId,
+      actorId: job.userId,
+      kind: "content.generation_failed",
+      subjectType: "content_item",
+      subjectId: contentItemId,
+      summary: `${stage} generation failed`,
+      metadata: { jobId: job.id, errorCode: normalisedCode },
+    });
   });
 }
 

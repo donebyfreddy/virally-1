@@ -1,0 +1,2 @@
+ALTER TABLE "credit_reservations" ADD COLUMN "expected_run_count" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "credit_reservations" ADD CONSTRAINT "credit_reservations_expected_runs_check" CHECK (expected_run_count >= 1);

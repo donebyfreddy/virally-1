@@ -434,6 +434,16 @@ export const contentItems = pgTable(
     language: text('language').notNull().default('en'),
     status: reviewStatusEnum('status').notNull().default('draft'),
 
+    /** Production lifecycle, separate from editorial review status. */
+    generationStatus: text('generation_status').$type<
+      'planned' | 'queued' | 'generating' | 'rendering' | 'ready' | 'failed' | 'cancelled'
+    >(),
+    generationErrorCode: text('generation_error_code'),
+    generationErrorMessage: text('generation_error_message'),
+    generationErrorStage: text('generation_error_stage'),
+    generationStartedAt: timestamp('generation_started_at', { withTimezone: true }),
+    generationCompletedAt: timestamp('generation_completed_at', { withTimezone: true }),
+
     // Canonical duration in milliseconds — never seconds-as-float.
     durationMs: integer('duration_ms'),
 
@@ -485,6 +495,10 @@ export const contentItems = pgTable(
     productionModeCheck: check(
       'content_items_production_mode_check',
       sql`production_mode is null or production_mode in ('fast', 'hybrid', 'cinematic')`,
+    ),
+    generationStatusCheck: check(
+      'content_items_generation_status_check',
+      sql`generation_status is null or generation_status in ('planned', 'queued', 'generating', 'rendering', 'ready', 'failed', 'cancelled')`,
     ),
     estimatedCreditsCheck: check(
       'content_items_estimated_credits_check',

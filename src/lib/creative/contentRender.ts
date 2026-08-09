@@ -79,19 +79,69 @@ export async function isContentReadyToRender(
   if (!storyboard) return false;
 
   const shotRows = await db
-    .select({ assetId: shots.assetId })
+    .select({
+      assetId: shots.assetId,
+      mimeType: mediaAssets.mimeType,
+      uploadState: mediaAssets.uploadState,
+    })
     .from(shots)
+    .leftJoin(mediaAssets, eq(mediaAssets.id, shots.assetId))
     .where(eq(shots.storyboardId, storyboard.id));
-  if (shotRows.length === 0 || shotRows.some((shot) => shot.assetId === null)) return false;
+  if (
+    shotRows.length === 0 ||
+    shotRows.some(
+      (shot) =>
+        shot.assetId === null ||
+        (shot.uploadState !== "uploaded" && shot.uploadState !== "ready") ||
+        !shot.mimeType ||
+        (!shot.mimeType.startsWith("image/") && !shot.mimeType.startsWith("video/")),
+    )
+  ) {
+    return false;
+  }
+
+  const [script] = await db
+    .select({ id: scripts.id, fullText: scripts.fullText })
+    .from(scripts)
+    .where(and(eq(scripts.contentItemId, contentItemId), eq(scripts.isCurrent, true)))
+    .limit(1);
+  if (!script || !script.fullText?.trim()) return false;
+
+  const segments = await db
+    .select({ text: scriptSegments.text, startMs: scriptSegments.startMs, endMs: scriptSegments.endMs })
+    .from(scriptSegments)
+    .where(eq(scriptSegments.scriptId, script.id));
+  if (
+    segments.length === 0 ||
+    segments.some(
+      (segment) =>
+        !segment.text.trim() ||
+        (segment.startMs !== null && segment.endMs !== null && segment.endMs <= segment.startMs),
+    )
+  ) {
+    return false;
+  }
 
   const requiredAudioKinds = requiredAudioKindsFrom(item.generationPlan);
   if (requiredAudioKinds.length === 0) return true;
 
   const audioRows = await db
-    .select({ kind: mediaAssets.kind })
+    .select({
+      kind: mediaAssets.kind,
+      mimeType: mediaAssets.mimeType,
+      uploadState: mediaAssets.uploadState,
+    })
     .from(mediaAssets)
     .where(and(eq(mediaAssets.contentItemId, contentItemId), isNull(mediaAssets.deletedAt)));
-  const presentKinds = new Set(audioRows.map((row) => row.kind));
+  const presentKinds = new Set(
+    audioRows
+      .filter(
+        (row) =>
+          (row.uploadState === "uploaded" || row.uploadState === "ready") &&
+          row.mimeType?.startsWith("audio/"),
+      )
+      .map((row) => row.kind),
+  );
   return requiredAudioKinds.every((kind) => presentKinds.has(kind));
 }
 

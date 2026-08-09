@@ -2,12 +2,15 @@ import { cn } from "@/lib/cn";
 
 export type MachineStatus =
   | "planning"
+  | "queued"
   | "generating"
   | "rendering"
   | "publishing"
   | "scheduled"
   | "live"
   | "idle"
+  | "ready"
+  | "cancelled"
   | "error";
 
 /**
@@ -25,6 +28,12 @@ const statusConfig: Record<
     label: "PLANNING",
     dot: "bg-[var(--color-text-muted)]",
     text: "text-[color:var(--color-text-muted)]",
+    active: false,
+  },
+  queued: {
+    label: "QUEUED",
+    dot: "bg-[var(--color-text-secondary)]",
+    text: "text-[color:var(--color-text-secondary)]",
     active: false,
   },
   generating: {
@@ -59,6 +68,18 @@ const statusConfig: Record<
   },
   idle: {
     label: "IDLE",
+    dot: "bg-[var(--color-text-muted)]",
+    text: "text-[color:var(--color-text-muted)]",
+    active: false,
+  },
+  ready: {
+    label: "READY",
+    dot: "bg-[var(--color-success)]",
+    text: "text-[color:var(--color-success)]",
+    active: false,
+  },
+  cancelled: {
+    label: "CANCELLED",
     dot: "bg-[var(--color-text-muted)]",
     text: "text-[color:var(--color-text-muted)]",
     active: false,

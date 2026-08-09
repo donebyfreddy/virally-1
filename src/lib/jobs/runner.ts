@@ -1,4 +1,7 @@
 import { abandonRun } from "@/lib/creative/pipeline";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { contentItems } from "@/lib/db/schema";
 import { tenantScope } from "@/lib/creative/scope";
 import { GENERATION_JOB_TYPES, handleGenerationJob } from "./generation";
 import {
@@ -156,6 +159,30 @@ async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
         { code: "handler_error", message, retryable: true },
         { attempts: job.attempts, maxAttempts: job.maxAttempts },
       );
+      const contentItemId = job.payload.contentItemId;
+      if (typeof contentItemId === "string") {
+        await db
+          .update(contentItems)
+          .set({
+            generationStatus: "failed",
+            generationErrorCode: "UNKNOWN_ERROR",
+            generationErrorMessage: message.slice(0, 500),
+            generationErrorStage:
+              job.type === "content.render"
+                ? "rendering"
+                : typeof job.payload.capability === "string"
+                  ? job.payload.capability
+                  : "asset_generation",
+            generationCompletedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(contentItems.id, contentItemId),
+              eq(contentItems.workspaceId, job.workspaceId),
+            ),
+          );
+      }
       // A dead-lettered job will never be polled again, so its run — if it has
       // one — must be closed out here or it sits non-terminal forever, quietly
       // consuming a concurrency slot for every generation after it. See

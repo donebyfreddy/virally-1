@@ -2,15 +2,16 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { contentVariants, mediaAssets } from "@/lib/db/schema.fragment";
+import { activityEvents, contentItems, contentVariants, mediaAssets } from "@/lib/db/schema.fragment";
 import { buildCompositionForContentItem } from "@/lib/creative/contentRender";
 import { CompositionInvalidError, renderComposition, RenderNotAvailableError } from "@/lib/creative/render";
 import { tenantScope } from "@/lib/creative/scope";
 import { getStorageAdapter } from "@/lib/storage";
 import type { StorageBucket } from "@/lib/storage/types";
 import { completeJob, failJob, type ClaimedJob } from "./queue";
+import { logGenerationStage } from "./generationLog";
 
 /**
  * The render job handler — enqueued by `enqueueRenderIfReady` in
@@ -32,6 +33,7 @@ export type RenderHandlerResult =
   | { outcome: "failed"; reason: string };
 
 export async function handleRenderJob(job: ClaimedJob): Promise<RenderHandlerResult> {
+  const handledAt = Date.now();
   const payload = job.payload as RenderJobPayload;
   const scope = tenantScope(job.organizationId, job.workspaceId);
 
@@ -48,6 +50,11 @@ export async function handleRenderJob(job: ClaimedJob): Promise<RenderHandlerRes
 
   let tmpDir: string | null = null;
   try {
+    await db
+      .update(contentItems)
+      .set({ generationStatus: "rendering", updatedAt: new Date() })
+      .where(andContent(scope.workspaceId, contentItemId));
+
     const { composition, assets } = await buildCompositionForContentItem(scope, contentItemId);
 
     const storage = getStorageAdapter();
@@ -65,6 +72,11 @@ export async function handleRenderJob(job: ClaimedJob): Promise<RenderHandlerRes
     const result = await renderComposition({ composition, assetUrls, outputPath });
 
     const bytes = await readFile(outputPath);
+    if (bytes.byteLength === 0 || result.durationFrames <= 0 || result.width <= 0 || result.height <= 0) {
+      throw new CompositionInvalidError([
+        { code: "invalid_export", message: "Remotion returned an invalid or empty video export." },
+      ]);
+    }
     const key = `${scope.workspaceId}/${contentItemId}/${randomUUID()}.mp4`;
     await storage.putObject({ bucket: "exports", key, body: bytes, contentType: "video/mp4" });
 
@@ -101,7 +113,43 @@ export async function handleRenderJob(job: ClaimedJob): Promise<RenderHandlerRes
       .set({ renderedAssetId: renderedAsset.id, updatedAt: new Date() })
       .where(eq(contentVariants.contentItemId, contentItemId));
 
+    const completedAt = new Date();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(contentItems)
+        .set({
+          generationStatus: "ready",
+          generationErrorCode: null,
+          generationErrorMessage: null,
+          generationErrorStage: null,
+          generationCompletedAt: completedAt,
+          durationMs: Math.round((result.durationFrames / composition.fps) * 1000),
+          updatedAt: completedAt,
+        })
+        .where(andContent(scope.workspaceId, contentItemId));
+      await tx.insert(activityEvents).values({
+        organizationId: scope.organizationId,
+        workspaceId: scope.workspaceId,
+        actorId: job.userId,
+        kind: "content.render_completed",
+        subjectType: "content_item",
+        subjectId: contentItemId,
+        summary: "Final render completed",
+        metadata: { jobId: job.id, mediaAssetId: renderedAsset.id },
+      });
+    });
+
     await completeJob(job.id, { mediaAssetId: renderedAsset.id });
+    logGenerationStage({
+      contentId: contentItemId,
+      generationJobId: job.id,
+      workspaceId: job.workspaceId,
+      provider: "remotion",
+      model: null,
+      stage: "rendering",
+      durationMs: Date.now() - handledAt,
+      status: "completed",
+    });
     return { outcome: "completed" };
   } catch (error) {
     const retryable = !(error instanceof RenderNotAvailableError || error instanceof CompositionInvalidError);
@@ -111,8 +159,34 @@ export async function handleRenderJob(job: ClaimedJob): Promise<RenderHandlerRes
       { code: "render_failed", message, retryable },
       { attempts: job.attempts, maxAttempts: job.maxAttempts },
     );
+    await db
+      .update(contentItems)
+      .set({
+        generationStatus: "failed",
+        generationErrorCode: "REMOTION_FAILED",
+        generationErrorMessage: message.slice(0, 500),
+        generationErrorStage: "rendering",
+        generationCompletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(andContent(scope.workspaceId, contentItemId));
+    logGenerationStage({
+      contentId: contentItemId,
+      generationJobId: job.id,
+      workspaceId: job.workspaceId,
+      provider: "remotion",
+      model: null,
+      stage: "rendering",
+      durationMs: Date.now() - handledAt,
+      status: "failed",
+      errorCode: "REMOTION_FAILED",
+    });
     return { outcome: "failed", reason: message };
   } finally {
     if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
   }
+}
+
+function andContent(workspaceId: string, contentItemId: string) {
+  return and(eq(contentItems.id, contentItemId), eq(contentItems.workspaceId, workspaceId));
 }
