@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
+  // @remotion/renderer requires() platform-specific compositor binaries at
+  // runtime (one per OS/arch); keeping it external stops Next.js from trying
+  // to statically bundle every variant during the build.
+  serverExternalPackages: ["@remotion/renderer", "@remotion/bundler"],
   experimental: {
     // Rewrites barrel imports to deep paths so a single icon does not pull the
     // whole library into the graph.
