@@ -29,6 +29,20 @@ export const LEASE_MS = 120_000;
  */
 export const MAX_JOB_AGE_MS = 60 * 60 * 1000;
 
+/**
+ * How long a job may sit unclaimed before the watchdog gives up on a worker
+ * ever showing up.
+ *
+ * Distinct from `MAX_JOB_AGE_MS`: that one bounds a job already being worked
+ * (submitted to a provider, polling), this one bounds a job nobody has even
+ * looked at yet. Generous enough to absorb a cold serverless start and the
+ * self-trigger's own network round trip, short enough that a genuinely
+ * unconsumed queue — no local worker running, no cron configured — surfaces
+ * as a failed job in minutes rather than leaving a user staring at "Queued"
+ * with no explanation.
+ */
+export const QUEUE_CLAIM_TIMEOUT_MS = 3 * 60 * 1000;
+
 const RETRY_BASE_MS = 10_000;
 const RETRY_CEILING_MS = 300_000;
 

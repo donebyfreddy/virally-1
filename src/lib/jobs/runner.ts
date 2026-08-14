@@ -12,6 +12,7 @@ import {
   type JobType,
 } from "./queue";
 import { handleRenderJob } from "./render";
+import { failStaleQueuedJobs } from "./watchdog";
 
 /** Every job type this runner knows how to process, across both handlers. */
 const ALL_RUNNABLE_JOB_TYPES: readonly JobType[] = [...GENERATION_JOB_TYPES, "content.render"];
@@ -43,6 +44,8 @@ export type RunnerOptions = {
 
 export type RunnerReport = {
   reclaimed: number;
+  /** Jobs the watchdog failed for sitting unclaimed past the timeout. */
+  timedOut: number;
   claimed: number;
   completed: number;
   polling: number;
@@ -73,6 +76,7 @@ export async function runQueueOnce(options: RunnerOptions = {}): Promise<RunnerR
   const startedAt = Date.now();
   const report: RunnerReport = {
     reclaimed: 0,
+    timedOut: 0,
     claimed: 0,
     completed: 0,
     polling: 0,
@@ -87,6 +91,9 @@ export async function runQueueOnce(options: RunnerOptions = {}): Promise<RunnerR
   // the claim query until its lease is reclaimed, so doing this second would
   // delay every recovery by a full invocation.
   report.reclaimed = await reclaimExpiredLeases();
+  // Same reasoning for the other kind of orphan: a job no worker has ever
+  // claimed at all. See watchdog.ts.
+  report.timedOut = await failStaleQueuedJobs();
 
   while (report.claimed < maxJobs) {
     const elapsed = Date.now() - startedAt;
@@ -129,6 +136,9 @@ type OutcomeKey = "completed" | "polling" | "failed" | "abandoned" | "errored";
  * into a stalled batch.
  */
 async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
+  console.info(
+    `[generation] job claimed jobId=${job.id} type=${job.type} contentId=${readPayloadString(job.payload, "contentItemId") ?? "-"}`,
+  );
   try {
     if (job.type === "content.render") {
       const result = await handleRenderJob(job);
@@ -203,4 +213,9 @@ async function runOne(job: ClaimedJob): Promise<OutcomeKey> {
     }
     return "errored";
   }
+}
+
+function readPayloadString(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  return typeof value === "string" ? value : null;
 }

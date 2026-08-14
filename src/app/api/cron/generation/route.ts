@@ -1,35 +1,63 @@
 import { NextResponse } from "next/server";
-import { runQueueOnce } from "@/lib/jobs/runner";
+import { hasClaimableWork } from "@/lib/jobs/queue";
+import { runQueueOnce, type RunnerReport } from "@/lib/jobs/runner";
 import { isCronRequestAuthorised } from "@/lib/jobs/auth";
+import { triggerQueueDrain } from "@/lib/jobs/trigger";
 
 /**
  * Drains the generation queue.
  *
- * Invoked on a schedule. Every generation runs here rather than inside a
- * request: a video model takes minutes, which no request handler can wait for,
- * and a user closing the tab must not abandon work they have been charged for.
+ * Reached three ways, none of which is a plain user request:
  *
- * Not a daemon. The loop is bounded by wall clock so it exits cleanly before
- * the platform's execution ceiling, leaving every claimed job either finished
- * or parked with its lease released. The next invocation continues.
+ *  1. `vercel.json`'s cron schedule — the correctness guarantee. This fires
+ *     on a fixed interval regardless of anything else, so a queued job is
+ *     never more than one interval away from being picked up even if every
+ *     other trigger below is lost.
+ *  2. The self-trigger in `trigger.ts`, fired right after a job is enqueued —
+ *     a latency optimisation so generation starts in effectively zero time
+ *     instead of waiting for the next cron tick.
+ *  3. Itself, chained via `after()` below when this invocation's own time
+ *     budget runs out with work still outstanding — so a batch that takes
+ *     longer than one invocation's ceiling keeps moving without waiting for
+ *     the next cron tick either.
+ *
+ * Every generation runs here rather than inside a request: a video model
+ * takes minutes, which no request handler can wait for, and a user closing
+ * the tab must not abandon work they have been charged for.
+ *
+ * Not a daemon, but not a single batch either. The loop below behaves like
+ * the local dev worker (`scripts/worker.ts`) for as long as this invocation's
+ * wall-clock budget allows — draining what is due, briefly sleeping when
+ * something is merely parked on `run_after`, and stopping only when the
+ * queue is genuinely empty or the deadline arrives. That is what makes one
+ * kick sufficient for most generations to run start-to-finish without ever
+ * needing a second invocation.
  *
  * Overlapping invocations are safe by construction — batches are claimed with
  * `FOR UPDATE SKIP LOCKED` and leases are independent — so a slow run being
- * overtaken by the next tick costs throughput, never correctness. That is why
- * there is no run lock here; adding one would turn a harmless overlap into a
- * single point of failure the moment a worker died holding it.
+ * overtaken by the next tick, or by its own chained continuation, costs
+ * throughput, never correctness. That is why there is no run lock here;
+ * adding one would turn a harmless overlap into a single point of failure the
+ * moment a worker died holding it.
  */
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 /**
- * Slightly under the platform's default ceiling, and the budget below is lower
- * still. Two margins rather than one because being killed mid-job is the
- * failure this whole design exists to avoid.
+ * Slightly under the platform's default ceiling, and the deadline below is
+ * lower still. Two margins rather than one because being killed mid-job is
+ * the failure this whole design exists to avoid.
  */
 export const maxDuration = 300;
 
-const BUDGET_MS = 240_000;
+/** Wall-clock ceiling for this invocation's own loop, below `maxDuration`. */
+const ROUTE_DEADLINE_MS = 260_000;
+/** Per-call budget handed to `runQueueOnce`, matching its own default reserve. */
+const BATCH_BUDGET_MS = 50_000;
+/** Sleep between rounds that claimed nothing but the queue is not empty — a job parked on `run_after`. */
+const IDLE_POLL_MS = 3_000;
+/** Sleep between rounds that did real work, so the next round does not lag visibly behind the provider. */
+const ACTIVE_POLL_MS = 500;
 
 export async function POST(request: Request): Promise<Response> {
   if (!isCronRequestAuthorised(request)) {
@@ -40,8 +68,37 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const report = await runQueueOnce({ budgetMs: BUDGET_MS });
-    return NextResponse.json({ ok: true, ...report });
+    const startedAt = Date.now();
+    const aggregate = emptyReport();
+
+    while (Date.now() - startedAt < ROUTE_DEADLINE_MS) {
+      const remaining = ROUTE_DEADLINE_MS - (Date.now() - startedAt);
+      const report = await runQueueOnce({ budgetMs: Math.min(BATCH_BUDGET_MS, remaining) });
+      mergeReport(aggregate, report);
+
+      const madeProgress = report.claimed > 0 || report.reclaimed > 0 || report.timedOut > 0;
+      if (!madeProgress) {
+        // Nothing claimable this instant. Stop for good if the queue is truly
+        // empty; otherwise everything outstanding is parked (a poll, a retry
+        // backoff) and a short sleep is cheaper than ending the invocation.
+        if (!(await hasClaimableWork())) break;
+        await sleep(IDLE_POLL_MS);
+      } else {
+        await sleep(ACTIVE_POLL_MS);
+      }
+    }
+
+    aggregate.durationMs = Date.now() - startedAt;
+
+    if (await hasClaimableWork()) {
+      // The deadline arrived with work still outstanding. Chain a follow-up
+      // invocation rather than waiting for the next cron tick — see point 3
+      // in the module doc comment. Best-effort: the cron schedule is the
+      // actual correctness guarantee if this is ever lost.
+      triggerQueueDrain();
+    }
+
+    return NextResponse.json({ ok: true, ...aggregate });
   } catch (error) {
     // The runner already converts per-job failures into recorded job failures,
     // so reaching here means the queue's own bookkeeping failed — an
@@ -60,4 +117,35 @@ export async function POST(request: Request): Promise<Response> {
  */
 export async function GET(request: Request): Promise<Response> {
   return POST(request);
+}
+
+function emptyReport(): RunnerReport {
+  return {
+    reclaimed: 0,
+    timedOut: 0,
+    claimed: 0,
+    completed: 0,
+    polling: 0,
+    failed: 0,
+    abandoned: 0,
+    errored: 0,
+    budgetExhausted: false,
+    durationMs: 0,
+  };
+}
+
+function mergeReport(into: RunnerReport, from: RunnerReport): void {
+  into.reclaimed += from.reclaimed;
+  into.timedOut += from.timedOut;
+  into.claimed += from.claimed;
+  into.completed += from.completed;
+  into.polling += from.polling;
+  into.failed += from.failed;
+  into.abandoned += from.abandoned;
+  into.errored += from.errored;
+  into.budgetExhausted = into.budgetExhausted || from.budgetExhausted;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

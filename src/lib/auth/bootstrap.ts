@@ -60,6 +60,17 @@ function slugify(name: string): string {
 
 export async function bootstrapTenant(user: SessionUser): Promise<BootstrapResult> {
   try {
+    // Fast path: this call runs on EVERY authenticated page load (see
+    // resolveTenantContext's doc comment), and the slow path below is a
+    // ~10-round-trip transaction that only ever does real work the very
+    // first time a tenant is created. For every load after that — which is
+    // effectively all of them — one join tells us everything already exists,
+    // which is the difference between one round trip and ten on a page a
+    // user's browser polls every few seconds while generation runs (see
+    // `/app/content/[contentId]`).
+    const fast = await tryFastPath(user);
+    if (fast) return { status: "ok", context: fast };
+
     const context = await db.transaction(async (tx) => {
       const avatar = user.image ?? null;
 
@@ -231,4 +242,67 @@ export async function bootstrapTenant(user: SessionUser): Promise<BootstrapResul
       detail: error instanceof Error ? error.message : "Unknown bootstrap failure.",
     };
   }
+}
+
+/**
+ * One query, no writes in the common case.
+ *
+ * Mirrors exactly what the slow path resolves for a user who already owns an
+ * organisation: the same "owned, oldest first" org, its default workspace,
+ * its default brand and its onboarding row. Returns null — falling through to
+ * the full self-healing transaction — for anything that query cannot find in
+ * one shot: no owned org yet, or a workspace/brand that a previous partial
+ * bootstrap failed to create. The slow path's inserts are all
+ * `onConflictDoNothing`/idempotent, so falling through here is always safe,
+ * just occasionally slower than it needs to be.
+ */
+async function tryFastPath(user: SessionUser): Promise<TenantContext | null> {
+  const rows = await db
+    .select({
+      organizationId: organizationMembers.organizationId,
+      workspaceId: workspaces.id,
+      brandId: brands.id,
+      onboardingCompletedAt: onboardingProgress.completedAt,
+      profileEmail: profiles.email,
+      profileName: profiles.fullName,
+      profileAvatar: profiles.avatarUrl,
+    })
+    .from(organizationMembers)
+    .innerJoin(
+      workspaces,
+      and(eq(workspaces.organizationId, organizationMembers.organizationId), eq(workspaces.isDefault, true)),
+    )
+    .leftJoin(brands, and(eq(brands.workspaceId, workspaces.id), eq(brands.isDefault, true)))
+    .leftJoin(
+      onboardingProgress,
+      and(
+        eq(onboardingProgress.organizationId, organizationMembers.organizationId),
+        eq(onboardingProgress.userId, organizationMembers.userId),
+      ),
+    )
+    .leftJoin(profiles, eq(profiles.id, organizationMembers.userId))
+    .where(and(eq(organizationMembers.userId, user.id), eq(organizationMembers.role, "owner")))
+    .orderBy(organizationMembers.createdAt)
+    .limit(1);
+
+  const row = rows[0];
+  if (!row || !row.brandId) return null;
+
+  const avatar = user.image ?? null;
+  const profileStale =
+    row.profileEmail !== user.email || row.profileName !== user.name || row.profileAvatar !== avatar;
+  if (profileStale) {
+    await db
+      .update(profiles)
+      .set({ email: user.email, fullName: user.name, avatarUrl: avatar ?? undefined })
+      .where(eq(profiles.id, user.id));
+  }
+
+  return {
+    organizationId: row.organizationId,
+    workspaceId: row.workspaceId,
+    brandId: row.brandId,
+    onboardingComplete: Boolean(row.onboardingCompletedAt),
+    wasCreated: false,
+  };
 }

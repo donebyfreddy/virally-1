@@ -341,4 +341,36 @@ describe.skipIf(!HAS_DATABASE)("durable queue (integration)", () => {
     expect(ids).toContain(imageJob);
     expect(ids).not.toContain(publishJob);
   });
+
+  describe("hasClaimableWork", () => {
+    it("is true once a job is enqueued", async () => {
+      const scope = await freshScope();
+      await enqueue(scope);
+      expect(await deps.queue.hasClaimableWork()).toBe(true);
+    });
+
+    it("is true for a job parked on a future run_after — it is due later, not gone", async () => {
+      const scope = await freshScope();
+      const { jobId } = await enqueue(scope);
+      await deps.queue.claimJobs({ limit: 20 });
+      await deps.queue.awaitExternal(jobId, new Date(Date.now() + 30_000));
+
+      // This is exactly what tells the cron route's drain loop whether to
+      // sleep-and-retry versus stop for good — see route.ts.
+      expect(await deps.queue.hasClaimableWork()).toBe(true);
+    });
+
+    it("stops counting a job once it reaches a terminal state", async () => {
+      // `hasClaimableWork` reads the whole table, not one fixture's rows, so
+      // this cannot assert a global `false` against a shared database — only
+      // that a completed job specifically does not remain claimable.
+      const scope = await freshScope();
+      const { jobId } = await enqueue(scope);
+      await deps.queue.claimJobs({ limit: 20 });
+      await deps.queue.completeJob(jobId);
+
+      const claimed = await deps.queue.claimJobs({ limit: 100 });
+      expect(claimed.find((job) => job.id === jobId)).toBeUndefined();
+    });
+  });
 });

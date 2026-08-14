@@ -141,6 +141,10 @@ async function submitPhase(
 ): Promise<HandlerResult> {
   const request = { kind: payload.kind, input: payload.input } as SubmitInput;
 
+  console.info(
+    `[generation] submitting to fal jobId=${job.id} contentId=${payload.contentItemId ?? "-"} provider=${payload.preferredProviderId ?? "auto"} model=${payload.modelId ?? "auto"}`,
+  );
+
   const outcome = await submitGeneration(scope, request, {
     allowMockFallback: payload.allowMockFallback ?? false,
     jobId: job.id,
@@ -170,6 +174,9 @@ async function submitPhase(
   // that already exists. Treating it as an error would fail a generation the
   // user is being charged for and which is going to complete regardless.
   const { runId } = outcome;
+  console.info(
+    `[generation] fal request submitted jobId=${job.id} externalJobId=${outcome.status === "submitted" ? outcome.externalTaskId : "already_running"}`,
+  );
 
   // Written before parking. A crash here would otherwise orphan a provider task
   // that is already running and already billable.

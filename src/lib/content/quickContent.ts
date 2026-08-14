@@ -49,6 +49,7 @@ import type { AspectRatio, Platform } from "@/types/database";
 import { isFalConfigured } from "@/lib/creative/env";
 import { isContentReadyToRender } from "@/lib/creative/contentRender";
 import { enqueueJob } from "@/lib/jobs/queue";
+import { triggerQueueDrain } from "@/lib/jobs/trigger";
 
 /**
  * Quick Content: one content item, created directly, with no campaign.
@@ -730,6 +731,7 @@ export async function retryQuickContentGeneration(
       idempotencyKey: `content.render:${contentId}:attempt:${attempt}`,
       priority: 3,
     });
+    if (result.created) triggerQueueDrain();
     await setContentQueued(contentId, context.workspaceId);
     revalidatePath(`/app/content/${contentId}`);
     return { ok: true, data: { contentId, jobsStarted: result.created ? 1 : 0 } };

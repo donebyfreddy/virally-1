@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { jobEvents, jobs } from "@/lib/db/schema";
 import type { JobStatus } from "@/types/database";
@@ -308,6 +308,24 @@ export async function reclaimExpiredLeases(options: { now?: Date } = {}): Promis
     )
     .returning({ id: jobs.id });
   return rows.length;
+}
+
+/**
+ * Whether any job is still on its way to `completed` — claimable now, or
+ * parked and due later.
+ *
+ * Used by the drain loop to decide whether to keep polling or stop: a `false`
+ * here means the queue is genuinely empty and there is nothing to gain by
+ * checking again, whereas `true` with zero jobs claimed just now means
+ * everything outstanding is parked on `run_after` (a poll, a retry backoff).
+ */
+export async function hasClaimableWork(): Promise<boolean> {
+  const rows = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(inArray(jobs.status, CLAIMABLE))
+    .limit(1);
+  return rows.length > 0;
 }
 
 export type EnqueueInput = {

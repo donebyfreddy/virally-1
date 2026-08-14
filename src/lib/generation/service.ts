@@ -22,6 +22,7 @@ import type {
   VideoGenerationInput,
 } from "@/lib/creative/types";
 import { enqueueJob, type JobType } from "@/lib/jobs/queue";
+import { triggerQueueDrain } from "@/lib/jobs/trigger";
 import { checkGenerationLimits } from "./limits";
 import { checkGenerationSafety, type LikenessConsent } from "./safety";
 
@@ -276,6 +277,10 @@ export async function startGeneration(
   });
 
   if (!created) return { status: "already_started", jobId };
+
+  // Nudges the queue to drain now rather than waiting for the next scheduled
+  // invocation of the cron endpoint. Best-effort — see trigger.ts.
+  triggerQueueDrain();
 
   await recordStarted(scope, request, {
     jobId,

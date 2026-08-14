@@ -13,6 +13,7 @@ export type GenerationErrorCode =
   | "VOICE_GENERATION_FAILED"
   | "REMOTION_FAILED"
   | "STORAGE_FAILED"
+  | "WORKER_UNAVAILABLE"
   | "UNKNOWN_ERROR";
 
 /** Maps provider/transport vocabulary onto the stable codes the product UI understands. */
@@ -54,6 +55,9 @@ export function userMessageForGenerationError(
   }
   if (code === "INVALID_API_KEY") {
     return `${provider} authentication failed. An administrator needs to verify the provider configuration.`;
+  }
+  if (code === "WORKER_UNAVAILABLE") {
+    return "Generation couldn't start. The generation worker did not pick up this job.";
   }
   return fallback;
 }

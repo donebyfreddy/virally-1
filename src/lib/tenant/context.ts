@@ -80,8 +80,14 @@ export async function resolveTenantContext(user: SessionUser): Promise<TenantRes
   // wizard exists to collect brand/goal preferences before the dashboard —
   // with no real signup to gate it, skip straight past it onto the
   // placeholder brand `bootstrapTenant` already created.
+  //
+  // Not awaited: nothing below reads its result (the `onboarding` row is
+  // re-read fresh near the end of this function regardless), so blocking
+  // every dev-mode request on this write — which this function's own EVERY
+  // call would otherwise do, since it runs on every authenticated page load —
+  // would cost a full round trip for a side effect nothing here depends on.
   if (DEV_BYPASS_AUTH) {
-    await db
+    void db
       .update(onboardingProgress)
       .set({ completedAt: new Date() })
       .where(
@@ -90,7 +96,10 @@ export async function resolveTenantContext(user: SessionUser): Promise<TenantRes
           eq(onboardingProgress.userId, user.id),
           isNull(onboardingProgress.completedAt),
         ),
-      );
+      )
+      .catch((error) => {
+        console.error("[tenant] Could not mark dev-bypass onboarding complete.", error);
+      });
   }
 
   const memberships = await db
@@ -154,26 +163,40 @@ export async function resolveTenantContext(user: SessionUser): Promise<TenantRes
 
   if (!active) return { status: "needs_bootstrap" };
 
-  const [workspaceMembership] = await db
-    .select({ role: workspaceMembers.role })
-    .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, active.id), eq(workspaceMembers.userId, user.id)))
-    .limit(1);
+  // None of these three depend on one another — only on `active` and `user`,
+  // both already known — so there is no reason to pay for them as three
+  // sequential round trips to a remote database.
+  const [[workspaceMembership], brandRows, [onboarding]] = await Promise.all([
+    db
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, active.id), eq(workspaceMembers.userId, user.id)))
+      .limit(1),
+    db
+      .select({
+        id: brands.id,
+        name: brands.name,
+        isPlaceholder: brands.isPlaceholder,
+        isDefault: brands.isDefault,
+      })
+      .from(brands)
+      .where(and(eq(brands.workspaceId, active.id), isNull(brands.deletedAt)))
+      .orderBy(desc(brands.isDefault), asc(brands.name)),
+    db
+      .select({ completedAt: onboardingProgress.completedAt })
+      .from(onboardingProgress)
+      .where(
+        and(
+          eq(onboardingProgress.organizationId, active.organizationId),
+          eq(onboardingProgress.userId, user.id),
+        ),
+      )
+      .limit(1),
+  ]);
 
   const role =
     effectiveRole(roleByOrg.get(active.organizationId) ?? null, workspaceMembership?.role ?? null) ??
     "viewer";
-
-  const brandRows = await db
-    .select({
-      id: brands.id,
-      name: brands.name,
-      isPlaceholder: brands.isPlaceholder,
-      isDefault: brands.isDefault,
-    })
-    .from(brands)
-    .where(and(eq(brands.workspaceId, active.id), isNull(brands.deletedAt)))
-    .orderBy(desc(brands.isDefault), asc(brands.name));
 
   const brandList: BrandSummary[] = brandRows;
 
@@ -182,17 +205,6 @@ export async function resolveTenantContext(user: SessionUser): Promise<TenantRes
     brandList.find((b: BrandSummary) => b.id === requestedBrand) ??
     brandList.find((b: BrandSummary) => b.isDefault) ??
     brandList[0];
-
-  const [onboarding] = await db
-    .select({ completedAt: onboardingProgress.completedAt })
-    .from(onboardingProgress)
-    .where(
-      and(
-        eq(onboardingProgress.organizationId, active.organizationId),
-        eq(onboardingProgress.userId, user.id),
-      ),
-    )
-    .limit(1);
 
   return {
     status: "ok",
